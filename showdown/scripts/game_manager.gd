@@ -214,6 +214,8 @@ func _ready() -> void:
 	_pause = PauseMenu.new()              # CanvasLayer 10: Pausemenü
 	add_child(_pause)
 
+	# Tastaturfokus sofort holen (beim Start aus dem Editor sonst erst nach einem Klick)
+	get_window().grab_focus()
 	_last_usec = Time.get_ticks_usec()
 	_start_intro()
 
