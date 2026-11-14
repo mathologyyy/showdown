@@ -44,6 +44,7 @@ const BREAK_SECONDS := 1.8          # echte Sekunden Standbild nach einem Schuss
 var BULLET_SPEED: float = 40.0      # m pro Spielsekunde (bei 10 % Zeitlupe: 4 m/s auf dem Schirm); aus Tweaks "weapons"
 const SHOT_RANGE := 60.0
 const RESOLVE_TAIL_TICKS := 72      # Auswertung läuft 0,15 s über die längste Aufzeichnung hinaus
+const SOLO_TAIL_TICKS := 288        # ohne Runden: so lange läuft die Welt nach der Entscheidung noch weiter (0,6 s)
 var RESOLVE_TIME_SCALE: float = 0.6 # Tempo der Auswertung; aus Tweaks "tempo"
 var REWIND_SPEED: float = 4.0        # Rückspultempo als Vielfaches der Echtzeit; aus Tweaks "tempo"
 var REWIND_MAX_SECONDS: float = 3.0  # Obergrenze fürs Rückspulen in echten Sekunden; aus Tweaks "tempo"
@@ -139,6 +140,11 @@ var _initial_doors: Array = []       # Türzustand nach dem Intro (Start des Abs
 var _track: RoundSystem.Track        # Aufzeichnung des laufenden Zugs
 var _segment: RoundSystem.Segment    # Welt-Aufzeichnung der laufenden Auswertung
 var _resolve_end := 0
+## Nur noch ein Officer übrig: keine Runden mehr. Kein Freeze, kein Zurückspulen, keine
+## Auswertung – alles wirkt sofort, und das Gespielte wird direkt fürs Abschluss-Replay
+## aufgezeichnet (_segment).
+var _solo := false
+var _solo_end := -1                  # Tick, an dem der Einsatz ohne Runden endet (< 0 = läuft noch)
 var _takeover_tick := 0              # ab diesem Tick steuert der Spieler
 var _lead_total := 0.0               # Vorlauf + Countdown in echten Sekunden (Übernahme-Timer)
 var _taken := false
@@ -393,6 +399,12 @@ func _start_turn() -> void:
 	_build_ghosts()
 	_track = rounds.begin_turn()
 	phase = Phase.PLAYING
+	_solo = rounds.order.size() == 1
+	_solo_end = -1
+	if _solo:
+		_segment = RoundSystem.Segment.new()
+		for a in _all:
+			_segment.tracks.append(PackedFloat32Array())
 	_takeover_tick = maxi(0, prev_end - TAKEOVER_LEAD_TICKS)
 	_taken = false
 	_count_left = -1.0
@@ -475,6 +487,9 @@ func _take_control() -> void:
 	_hud.hide_card()
 	_go_step = 0
 	_go_t = 0.0
+	if _solo:
+		_hud.show_card("LETZTER OFFICER", "Keine Runden mehr  ·  ab jetzt läuft alles ohne Zurückspulen durch",
+				COL_DANGER, 3.0)
 	_fx.add_pulse(active.global_position, active.color.lightened(0.5))
 
 
@@ -715,7 +730,7 @@ func _sim_tick(dt: float) -> void:
 				if thrown:
 					var target := _grenade_target(o, inp.aim)
 					_track.throws.append({"tick": tick, "target": target})
-					if GRENADE_ENDS_TURN:
+					if GRENADE_ENDS_TURN and not _solo:
 						# Nahaufnahme: Wurfbewegung, Kamera auf den Werfer, Granate auf ihrer echten Flugbahn
 						_cut = {"kind": "grenade", "from": o.eye(), "to": target, "actor": o,
 							"path": _grenade_preview(o.eye(), target)}
@@ -723,8 +738,9 @@ func _sim_tick(dt: float) -> void:
 						o.model.throw()
 						_begin_break("GRANATE GEWORFEN", "Officer %d  ·  Wirkung ungewiss" % (o.idx + 1), COL_FREEZE, ABILITY_CUT_SECONDS)
 						return
+					o.model.throw()
 					_throw_grenade(o.eye(), target, false)
-				if SHIELD_ENDS_TURN and o.shield_up and not shield_before:
+				if SHIELD_ENDS_TURN and not _solo and o.shield_up and not shield_before:
 					# Nahaufnahme: Kamera auf den Officer, der das Schild hebt
 					_cut = {"kind": "shield", "actor": o}
 					_cam_focus = o.global_position
@@ -733,21 +749,27 @@ func _sim_tick(dt: float) -> void:
 			else:
 				_track.add_frame(o)
 			if _taken and _hold_req:
-				_begin_break("POSITION GEHALTEN", "Officer %d sichert" % (o.idx + 1), Color.WHITE)
-				return
+				if _solo:
+					_hold_req = false         # ohne Runden gibt es keinen Zug zu beenden
+				else:
+					_begin_break("POSITION GEHALTEN", "Officer %d sichert" % (o.idx + 1), Color.WHITE)
+					return
 			if _taken and _fire_req:
 				_fire_req = false
 				if o.can_fire():
 					o.ammo -= 1
 					var dir := o.roll_shot_dir(_rng)
-					_track.shots.append({"tick": tick, "dir": dir})
-					_shot_fx(o, dir)
-					# Nahaufnahme: Mündungsfeuer und die Kugel auf ihrem ersten Meter
-					_cut = {"kind": "shot", "from": o.eye(), "dir": dir}
-					_cam_focus = o.global_position
-					_begin_break("FREEZE", "Officer %d hat geschossen  ·  Treffer ungewiss" % (o.idx + 1),
-							COL_FREEZE, SHOT_CUT_SECONDS)
-					return
+					if _solo:
+						_fire_bullet(o, dir)  # ohne Runden fliegt die Kugel sofort
+					else:
+						_track.shots.append({"tick": tick, "dir": dir})
+						_shot_fx(o, dir)
+						# Nahaufnahme: Mündungsfeuer und die Kugel auf ihrem ersten Meter
+						_cut = {"kind": "shot", "from": o.eye(), "dir": dir}
+						_cam_focus = o.global_position
+						_begin_break("FREEZE", "Officer %d hat geschossen  ·  Treffer ungewiss" % (o.idx + 1),
+								COL_FREEZE, SHOT_CUT_SECONDS)
+						return
 		elif rounds.tracks.has(o.idx):
 			var tr: RoundSystem.Track = rounds.tracks[o.idx]
 			if tick < tr.length():
@@ -780,14 +802,14 @@ func _sim_tick(dt: float) -> void:
 	_step_bullets(dt)
 	_step_grenades(dt)
 
-	if phase == Phase.PLAYING and not active.alive:
+	if phase == Phase.PLAYING and not _solo and not active.alive:
 		_begin_break("OFFICER %d GEFALLEN" % (active.idx + 1), "Getroffen von einer Kugel", COL_DANGER)
 		return
 
 	for a in _all:
 		a.update_motion(dt)
 
-	if phase == Phase.RESOLVE:
+	if _recording():
 		_record_world(_segment.tracks)
 	elif phase == Phase.PLAYING:
 		_record_world(_rw_tracks)
@@ -795,6 +817,35 @@ func _sim_tick(dt: float) -> void:
 	tick += 1
 	if phase == Phase.RESOLVE and tick >= _resolve_end and _bullets.is_empty() and _grenades.is_empty():
 		_finish_resolve()
+	elif phase == Phase.PLAYING and _solo:
+		_check_solo_end()
+
+
+## Wird das Geschehen gerade fürs Abschluss-Replay aufgezeichnet? In der Auswertung
+## und – ohne Runden – direkt beim Spielen des letzten Officers.
+func _recording() -> bool:
+	return phase == Phase.RESOLVE or (phase == Phase.PLAYING and _solo)
+
+
+## Ohne Runden (letzter Officer): Ist der Einsatz entschieden? Dann läuft die Welt noch
+## SOLO_TAIL_TICKS in Echtzeit weiter (Figuren fallen, Kugeln schlagen ein), danach
+## folgt Fehlschlag oder Abschluss-Replay.
+func _check_solo_end() -> void:
+	if _solo_end < 0:
+		if active.alive and not _hostage_lost() and _count_alive(enemies) > 0:
+			return
+		_solo_end = tick + SOLO_TAIL_TICKS
+		TimeControl.override_scale = 1.0
+	if tick < _solo_end or not _bullets.is_empty() or not _grenades.is_empty():
+		return
+	if not active.alive:
+		_fail("Der letzte Officer ist ausgefallen.")
+	elif _hostage_lost():
+		_fail("Eine Geisel wurde getötet.")
+	else:
+		_segment.ticks = tick
+		rounds.timeline.append(_segment)
+		_start_final_replay()
 
 
 ## Welt-Zustand eines Ticks an eine Aufzeichnung anhängen: pro Figur x, z, yaw,
@@ -817,7 +868,7 @@ func _record_world(tracks: Array) -> void:
 ## Neuer Schuss -> friert die Szene ein und beendet den Zug.
 ## execute: Schuss auf eine Geisel (abgelaufene Frist).
 func enemy_fire(e: Enemy, dir: Vector3, execute := false) -> void:
-	if phase == Phase.RESOLVE or not ENEMY_SHOT_ENDS_TURN or rounds.match_enemy_shot(e.idx, tick):
+	if phase == Phase.RESOLVE or _solo or not ENEMY_SHOT_ENDS_TURN or rounds.match_enemy_shot(e.idx, tick):
 		_fire_bullet(e, dir, execute)
 	else:
 		rounds.add_known_shot(e.idx, tick)
@@ -842,7 +893,7 @@ func _fire_bullet(shooter: Actor, dir: Vector3, hit_hostages := false) -> void:
 		"origin": shooter.eye(), "mask": mask, "high": high,
 		"enemy": by_enemy, "left": SHOT_RANGE, "leg": SHOT_RANGE, "bounces": 0,
 		"ghost": false, "hit_actor": false, "rec": null}
-	if phase == Phase.RESOLVE:
+	if _recording():
 		# fürs Abschluss-Replay merken; Flugstrecke und Trefferart werden beim Einschlag ergänzt
 		var rec := {"tick": tick, "who": _all.find(shooter), "from": b.pos, "dir": dir,
 			"enemy": by_enemy, "dist": SHOT_RANGE, "hit_actor": false}
@@ -893,7 +944,7 @@ func _open_door(i: int) -> void:
 		return
 	doors[i].set_open(true)
 	_snd.play("door", _pitch())
-	if phase == Phase.RESOLVE:
+	if _recording():
 		_segment.doors.append({"tick": tick, "door": i})
 	elif phase == Phase.PLAYING:
 		_rw_doors.append({"tick": tick, "door": i})
@@ -1065,7 +1116,7 @@ func _grenade_step(g: Dictionary, dt: float) -> bool:
 
 
 func _throw_grenade(from: Vector3, target: Vector3, ghost: bool) -> void:
-	if phase == Phase.RESOLVE:
+	if _recording():
 		_segment.grenades.append({"tick": tick, "from": from, "to": target})
 	_grenades.append(_make_grenade(from, target, ghost))
 
@@ -1545,7 +1596,9 @@ func _update_hud(real_dt: float) -> void:
 
 	match phase:
 		Phase.PLAYING:
-			if _taken:
+			if _taken and _solo:
+				_hud.set_phase("LETZTER OFFICER  ·  KEINE RUNDEN", COL_DANGER)
+			elif _taken:
 				_hud.set_phase("DEIN ZUG  ·  OFFICER %d" % (active.idx + 1), COL_GO)
 			else:
 				_hud.set_phase("VORLAUF IN ECHTZEIT", COL_REALTIME)
@@ -1578,7 +1631,7 @@ func _update_hud(real_dt: float) -> void:
 			state = "done"
 			word = "fertig"
 		chips.append({"text": "%d %s · %s" % [o.idx + 1, ROLE_SHORT[o.role], word],
-			"color": o.color, "state": state})
+			"color": o.color, "state": state, "role": o.role, "name": ROLE_SHORT[o.role]})
 	_hud.set_squad(chips)
 
 	if playing:
@@ -1612,9 +1665,9 @@ func _special_text(o: Officer) -> String:
 	match o.role:
 		"flash":
 			text = "LEERTASTE   Blendgranate × %d" % o.grenades \
-					+ ("  (beendet den Zug)" if GRENADE_ENDS_TURN else "")
+					+ ("  (beendet den Zug)" if GRENADE_ENDS_TURN and not _solo else "")
 		"shield":
-			text = "LEERTASTE   Schild heben" + ("  (beendet den Zug)" if SHIELD_ENDS_TURN else "")
+			text = "LEERTASTE   Schild heben" + ("  (beendet den Zug)" if SHIELD_ENDS_TURN and not _solo else "")
 		"roll":
 			text = "LEERTASTE   Hechtrolle  ·  " + ("bereit" if o.roll_ready() >= 1.0 else "lädt …")
 	var aim_line := "WAFFE ANGELEGT  ·  Linksklick schießt" if o.aiming \
