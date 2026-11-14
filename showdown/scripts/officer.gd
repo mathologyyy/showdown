@@ -27,8 +27,8 @@ const SHIELD_HALF_WIDTH := 0.7
 @export var max_grenades := 2
 @export var shield_speed_factor := 0.55  # Lauftempo mit erhobenem Schild
 @export var crouch_speed_factor := 0.7   # Lauftempo geduckt
-@export var roll_speed := 7.5            # m pro Spielsekunde
-@export var roll_time := 0.42            # Dauer der Rolle (ergibt gut 3 m)
+@export var roll_speed_factor := 2.0     # Tempo der Rolle als Vielfaches von move_speed
+@export var roll_time := 0.42            # Dauer der Rolle
 @export var roll_cooldown := 1.5         # Spielsekunden bis zur nächsten Rolle
 @export var roll_recover := 0.4          # danach so lange maximale Streuung
 
@@ -60,7 +60,7 @@ func apply_tweaks() -> void:
 	spread_min_deg = Tweaks.num("player", "spread_min_deg", 0.4)
 	max_ammo = Tweaks.whole("player", "max_ammo", 12)
 	max_grenades = Tweaks.whole("player", "max_grenades", 2)
-	roll_speed = Tweaks.num("player", "roll_speed", 7.5)
+	roll_speed_factor = Tweaks.num("player", "roll_speed_factor", 2.0)
 	roll_time = Tweaks.num("player", "roll_time", 0.42)
 	roll_cooldown = Tweaks.num("player", "roll_cooldown", 1.5)
 	roll_recover = Tweaks.num("player", "roll_recover", 0.4)
@@ -103,7 +103,7 @@ func control_tick(move: Vector2, aim_point: Vector3, action_held: bool, action_p
 
 	if _roll_left > 0.0:
 		# Rolle: fester Satz in Startrichtung, nicht lenkbar
-		move_step(_roll_dir * roll_speed * dt)
+		move_step(_roll_dir * move_speed * roll_speed_factor * dt)
 		_roll_left -= dt
 		stability = 0.0
 		if _roll_left <= 0.0:
