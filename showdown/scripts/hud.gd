@@ -5,6 +5,7 @@ extends CanvasLayer
 ##  - Titelkarte: große Einblendung mit Untertitel bei jedem Abschnittswechsel
 ##  - Kinobalken während nicht steuerbarer Abschnitte (Echtzeit-Vorlauf, Auswertung, Replay)
 ##  - bläulicher Schleier im Standbild (Freeze)
+##  - VHS-artiger Rückspul-Effekt mit blinkendem ◀◀-Icon in der Bildmitte (Rewind)
 ##  - unten links Munition + Aim-Stabilität, oben rechts Zeit und Tempo
 ## Alles per Code aufgebaut.
 
@@ -39,6 +40,15 @@ var _card_alpha := 0.0
 var _bars_on := false
 var _freeze_on := false
 
+var _rewind_rect: ColorRect       # Effekt-Ebene (erstes Kind von root, unter allem anderen HUD)
+var _rewind_mat: ShaderMaterial
+var _rewind_icon: Control         # blinkendes ◀◀-Icon + "REW" (letztes Kind von root)
+var _rewind_on := false
+var _rewind_k := 0.0              # Ein-/Ausblend-Faktor des Effekts (0..1)
+var _rewind_time := 0.0           # echte Sekunden seit Start, fürs Blinken
+## öffentlich für Tests: true, solange der Rückspul-Effekt angezeigt wird
+var rewind_shown := false
+
 
 func _ready() -> void:
 	layer = 3
@@ -46,6 +56,17 @@ func _ready() -> void:
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
+
+	# Effekt-Ebene fürs Zurückspulen: ALLERERSTES Kind von root, dadurch über dem
+	# Spielbild, aber unter allen HUD-Elementen (bleiben scharf)
+	_rewind_mat = ShaderMaterial.new()
+	_rewind_mat.shader = load("res://shaders/rewind.gdshader")
+	_rewind_rect = ColorRect.new()
+	_rewind_rect.material = _rewind_mat
+	_rewind_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rewind_rect.visible = false
+	root.add_child(_rewind_rect)
+	_rewind_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	_freeze = ColorRect.new()
 	_freeze.color = Color(0.25, 0.5, 1.0, 0.0)
@@ -145,6 +166,32 @@ func _ready() -> void:
 	_panel_label = _label(_panel, 28, Color.WHITE)
 	_panel_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_panel.visible = false
+
+	# --- Rückspul-Icon: zwei nach links zeigende Dreiecke (◀◀) + "REW" darunter ---
+	# LETZTES Kind von root, damit es über allem HUD liegt
+	_rewind_icon = Control.new()
+	_rewind_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_rewind_icon)
+	var tri_w := 170.0
+	var tri_h := 220.0
+	var gap := 24.0
+	for i in 2:
+		var tri := Polygon2D.new()
+		tri.color = Color(1, 1, 1, 0.9)
+		# Spitze links; beide Dreiecke zusammen um den Ursprung des Controls zentriert
+		var cx := (i * 2 - 1) * (tri_w * 0.5 + gap * 0.5)
+		tri.polygon = PackedVector2Array([
+			Vector2(cx - tri_w * 0.5, 0.0),
+			Vector2(cx + tri_w * 0.5, -tri_h * 0.5),
+			Vector2(cx + tri_w * 0.5, tri_h * 0.5),
+		])
+		_rewind_icon.add_child(tri)
+	var rew := _label(_rewind_icon, 54, Color.WHITE)
+	rew.text = "REW"
+	rew.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rew.custom_minimum_size.x = 200
+	rew.position = Vector2(-100, 150)   # ca. 150 px unter der Mitte, zentriert
+	_rewind_icon.visible = false
 
 
 func _bar(parent: Control, preset: int) -> ColorRect:
@@ -257,6 +304,12 @@ func set_freeze(on: bool) -> void:
 	_freeze_on = on
 
 
+## Rückspul-Effekt (VHS-Verzerrung + blinkendes ◀◀-Icon) an/aus.
+func set_rewind(on: bool) -> void:
+	_rewind_on = on
+	rewind_shown = on
+
+
 func set_hint_visible(on: bool) -> void:
 	_hint.visible = on
 
@@ -293,3 +346,13 @@ func tick(real_dt: float) -> void:
 	var bw := 1.0 - exp(-14.0 * real_dt)
 	_big.scale = _big.scale.lerp(Vector2.ONE, bw)
 	_big.rotation = lerpf(_big.rotation, 0.0, bw)
+
+	# --- Rückspul-Effekt: VHS-Shader weich ein-/ausblenden, Icon zentriert blinken ---
+	_rewind_time += real_dt
+	_rewind_k = move_toward(_rewind_k, 1.0 if _rewind_on else 0.0, 8.0 * real_dt)
+	_rewind_rect.visible = _rewind_k > 0.01
+	_rewind_mat.set_shader_parameter("strength", _rewind_k)
+	_rewind_icon.visible = _rewind_on
+	if _rewind_on:
+		_rewind_icon.position = get_viewport().get_visible_rect().size * 0.5
+		_rewind_icon.modulate.a = lerpf(0.35, 1.0, 0.5 + 0.5 * sin(_rewind_time * TAU * 3.0))

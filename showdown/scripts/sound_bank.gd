@@ -30,6 +30,7 @@ func _ready() -> void:
 	_add("ricochet", _tone(0.28, 2900.0, 1300.0, 0.15), -9.0)
 	_add("impact", _tone(0.07, 160.0, 70.0, 0.9), -12.0)
 	_add("freeze", _tone(0.35, 110.0, 55.0, 0.1), -4.0)
+	_add("rewind", _tone(0.9, 300.0, 1500.0, 0.25), -8.0)
 	_add("alarm", _tone(0.18, 520.0, 390.0, 0.0), -9.0)
 	for i in VOICES:
 		var p := AudioStreamPlayer.new()

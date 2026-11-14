@@ -47,6 +47,7 @@ const RESOLVE_TAIL_TICKS := 72      # Auswertung läuft 0,15 s über die längst
 var RESOLVE_TIME_SCALE: float = 0.6 # Tempo der Auswertung; aus Tweaks "tempo"
 var REWIND_SPEED: float = 4.0        # Rückspultempo als Vielfaches der Echtzeit; aus Tweaks "tempo"
 var REWIND_MAX_SECONDS: float = 3.0  # Obergrenze fürs Rückspulen in echten Sekunden; aus Tweaks "tempo"
+var REWIND_MIN_SECONDS: float = 0.8  # Untergrenze fürs Rückspulen in echten Sekunden; aus Tweaks "tempo"
 var _rw_tracks: Array = []           # Welt-Aufzeichnung des laufenden Zugs fürs Rückspulen: pro Figur PackedFloat32Array (x, z, yaw, alive, flags)
 var _rw_doors: Array = []            # in diesem Zug geöffnete Türen: [{tick, door}]
 var _rw_pos := 0.0                   # aktuelle Rückspul-Position in Ticks (läuft gegen 0)
@@ -162,6 +163,7 @@ func _ready() -> void:
 	RESOLVE_TIME_SCALE = Tweaks.num("tempo", "resolve_speed", 0.6)
 	REWIND_SPEED = Tweaks.num("tempo", "rewind_speed", 4.0)
 	REWIND_MAX_SECONDS = Tweaks.num("tempo", "rewind_max_seconds", 3.0)
+	REWIND_MIN_SECONDS = Tweaks.num("tempo", "rewind_min_seconds", 0.8)
 	_rng.randomize()
 	_level = Level.new()
 	add_child(_level)
@@ -513,14 +515,19 @@ func _start_rewind() -> void:
 		return
 	phase = Phase.REWIND
 	_rw_pos = float(n - 1)
-	_rw_rate = maxf(REWIND_SPEED * TimeControl.SIM_HZ, n / maxf(REWIND_MAX_SECONDS, 0.1))
+	# Rate so, dass das Rückspulen mindestens REWIND_MIN_SECONDS und höchstens
+	# REWIND_MAX_SECONDS echte Sekunden dauert
+	var lo := n / maxf(REWIND_MAX_SECONDS, 0.1)
+	var hi := maxf(lo, n / maxf(REWIND_MIN_SECONDS, 0.05))
+	_rw_rate = clampf(REWIND_SPEED * TimeControl.SIM_HZ, lo, hi)
 	_bullets.clear()
 	_grenades.clear()
 	_fx.clear()
 	_hud.set_freeze(false)
+	_hud.set_rewind(true)
 	_hud.set_letterbox(true)
 	_hud.show_card("ZURÜCKSPULEN", "Zurück zum Start des Durchlaufs", COL_REALTIME, 0.0)
-	_snd.play("freeze", 1.6)
+	_snd.play("rewind")
 
 
 ## Rückspul-Schritt (pro Frame, echte Zeit): Figuren fahren ihre aufgezeichneten
@@ -532,6 +539,7 @@ func _update_rewind(real_dt: float) -> void:
 		# _next_turn stellt den Checkpoint ohnehin exakt wieder her
 		_hud.set_letterbox(false)
 		_hud.hide_card()
+		_hud.set_rewind(false)
 		_next_turn()
 		return
 	var t := int(_rw_pos)
@@ -589,6 +597,7 @@ func _fail(reason: String) -> void:
 	TimeControl.override_scale = -1.0
 	_hud.hide_card()
 	_hud.set_letterbox(false)
+	_hud.set_rewind(false)
 	_hud.set_panel_text("MISSION FAILED\n\n%s\n\n[R] Durchlauf wiederholen      [N] Neue Mission" % reason)
 
 
@@ -607,6 +616,7 @@ func _start_final_replay() -> void:
 	for i in doors.size():
 		doors[i].set_open(_initial_doors[i], true)
 	_hud.set_panel_text("")
+	_hud.set_rewind(false)
 	_hud.set_letterbox(true)
 	_hud.show_card("EINSATZ-REPLAY", "Der gesamte Einsatz in Echtzeit", COL_REALTIME, 1.5)
 
