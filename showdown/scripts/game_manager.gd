@@ -74,6 +74,7 @@ const CROUCH_COVER_REACH := 1.6     # so nah muss die Kiste vor dem Geduckten st
 var FLASH_RADIUS: float = 4.5       # Blendradius (nur mit Sichtlinie zur Granate); aus Tweaks "weapons"
 var FLASH_SECONDS: float = 2.5      # so lange sind Gegner geblendet (Spielzeit); aus Tweaks "weapons"
 var MAX_BOUNCES: int = 2            # so oft prallt eine Kugel höchstens an Metall ab; aus Tweaks "weapons"
+var FAIL_ON_HOSTAGE_HIT: bool = true # Mission scheitert, sobald eine Geisel getroffen wird; aus Tweaks "mission"
 const DOOR_REACH := 1.7             # so nah muss ein Officer an der Tür stehen, um sie zu öffnen
 const DOOR_NOISE := 6.0             # so weit hört man eine aufgestoßene Tür
 const NEAR_MISS := 0.9              # fliegt eine Team-Kugel so knapp vorbei, geht der Gegner in Deckung
@@ -164,6 +165,7 @@ func _ready() -> void:
 	FLASH_RADIUS = Tweaks.num("weapons", "flash_radius", 4.5)
 	FLASH_SECONDS = Tweaks.num("weapons", "flash_seconds", 2.5)
 	MAX_BOUNCES = Tweaks.whole("weapons", "max_bounces", 2)
+	FAIL_ON_HOSTAGE_HIT = Tweaks.flag("mission", "fail_on_hostage_hit", true)
 	RESOLVE_TIME_SCALE = Tweaks.num("tempo", "resolve_speed", 0.6)
 	REWIND_SPEED = Tweaks.num("tempo", "rewind_speed", 4.0)
 	REWIND_MAX_SECONDS = Tweaks.num("tempo", "rewind_max_seconds", 3.0)
@@ -590,7 +592,7 @@ func _start_resolve() -> void:
 
 func _finish_resolve() -> void:
 	_segment.ticks = tick
-	if _count_alive(hostages) < hostages.size():
+	if _hostage_lost():
 		_fail("Eine Geisel wurde getötet.")
 	elif _count_alive(officers) == 0:
 		_fail("Das gesamte Team ist ausgefallen.")
@@ -1633,6 +1635,12 @@ func _ray(from: Vector3, to: Vector3, mask: int, exclude: Array = []) -> Diction
 ## Freie Sichtlinie (nur Wände/Möbel blockieren). Wird von der Gegner-KI genutzt.
 func los_clear(from: Vector3, to: Vector3) -> bool:
 	return _ray(from, to, Actor.LAYER_WORLD).is_empty()
+
+
+## Ist eine Geisel getroffen worden UND lässt das die Mission scheitern?
+## Mit fail_on_hostage_hit = false (gameplay_tweaks.cfg) läuft der Einsatz weiter.
+func _hostage_lost() -> bool:
+	return FAIL_ON_HOSTAGE_HIT and _count_alive(hostages) < hostages.size()
 
 
 func _count_alive(list: Array) -> int:

@@ -78,6 +78,7 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 - Die **Startplätze der Gegner** werden bei jeder neuen Mission ausgelost (je drei pro Raum).
 - Nach dem letzten Zug folgt die **Auswertung**: alle Aufzeichnungen laufen gemeinsam durch.
   Ihr Endzustand ist der Checkpoint des nächsten Durchlaufs. Tote Geisel = Mission failed.
+  (Abschaltbar über `fail_on_hostage_hit` in `gameplay_tweaks.cfg`.)
 - Sind nach einer Auswertung alle Gegner ausgeschaltet: Replay des ganzen Einsatzes in
   Echtzeit, danach Ergebnis mit **Wertung**: je ein Stern für Einsatzdauer, Zahl der
   Team-Schüsse und Zahl der Durchläufe.
@@ -146,6 +147,7 @@ mit Kommentar). Sie wird beim Start und bei jeder neuen Mission (**N**) neu gele
 | `[player]` | Lauftempo (auch geduckt, mit Schild, mit angelegter Waffe), Ziel-Rotation, Aim-Stabilität, Streuung, Munition, Granaten, Hechtrolle |
 | `[enemy]` | Reaktionszeit, Ziel-Tempo, Ziel-Genauigkeit, Zeit zum Ziehen der Waffe, Feuerrate, Sicht- und Hörweite, Lauftempo, Deckung, Geisel-Frist |
 | `[weapons]` | Kugeltempo, Granate (Wurfweite, Tempo, Zünder, Blendradius, Blenddauer), Zahl der Abpraller |
+| `[mission]` | Schalter `fail_on_hostage_hit`: scheitert die Mission, wenn eine Geisel getroffen wird? |
 
 Weiterhin im Code:
 
