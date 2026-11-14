@@ -79,13 +79,21 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 - Nach dem letzten Zug folgt die **Auswertung**: alle Aufzeichnungen laufen gemeinsam durch.
   Ihr Endzustand ist der Checkpoint des nächsten Durchlaufs. Tote Geisel = Mission failed.
   (Abschaltbar über `fail_on_hostage_hit` in `gameplay_tweaks.cfg`.)
+- **Letzter Officer:** Ist nach einer Auswertung nur noch ein Officer einsatzfähig, gibt es
+  keine Runden mehr. Ab dann wird nichts mehr eingefroren oder zurückgespult: Schüsse,
+  Granaten und Schild wirken sofort, und es geht ohne Unterbrechung weiter, bis alle Gegner
+  ausgeschaltet sind oder der Officer fällt. „Position halten“ hat dann keine Wirkung.
 - Sind nach einer Auswertung alle Gegner ausgeschaltet: Replay des ganzen Einsatzes in
   Echtzeit, danach Ergebnis mit **Wertung**: je ein Stern für Einsatzdauer, Zahl der
   Team-Schüsse und Zahl der Durchläufe.
 
 ## Anzeigen
 
-- Leiste oben: aktueller Abschnitt und Status der vier Officer (aktiv, fertig, wartet, Ausfall).
+- Leiste oben: aktueller Abschnitt und Status der Officer (aktiv, fertig, wartet, Ausfall).
+- Unten links: ein Icon pro Officer. Mit Blendgranate in der Hand, hinter dem Schild, und
+  der dünne Große im Laufschritt (der Schnelle mit der Hechtrolle). Der gerade gespielte ist
+  hell und farbig umrandet, Ausfälle sind durchgestrichen. Darüber Munition und Aim-Stabilität.
+- Oben links: kleine Übersicht der Tastenbelegung (während des Spielens).
 - Aktiver Officer: pulsierender Bodenring und Pfeil über dem Kopf.
 - Laser und weißer Streubogen erscheinen nur mit angelegter Waffe. Der Bogen schrumpft beim
   Stillstehen zu einem Punkt.
@@ -119,7 +127,7 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 | `scripts/fx_overlay.gd` | 2D-Effekte über dem Nebel: Kugeln, Mündungsfeuer, Einschläge, Streubogen, Markierung |
 | `scripts/vision.gd` | Sichtkegel per Raycast, Abdunkelungs-Maske, Sichtbarkeitstest |
 | `scripts/level.gd` | Test-Wohnung als Datentabellen (Wände, Möbel, Startpositionen) |
-| `scripts/hud.gd` | HUD: Abschnittsleiste, Titelkarten, Kinobalken, Ergebnis-Tafel |
+| `scripts/hud.gd` | HUD: Abschnittsleiste, Officer-Icons, Tastenbelegung, Titelkarten, Kinobalken, Ergebnis-Tafel |
 | `shaders/fog.gdshader` | Abdunkelung außerhalb der Sichtkegel |
 | `shaders/rewind.gdshader` | VHS-Effekt beim Zurückspulen |
 | `assets/characters/*.gltf` | Figuren mit Animationen |

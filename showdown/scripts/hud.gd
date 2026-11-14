@@ -6,12 +6,163 @@ extends CanvasLayer
 ##  - Kinobalken während nicht steuerbarer Abschnitte (Echtzeit-Vorlauf, Auswertung, Replay)
 ##  - bläulicher Schleier im Standbild (Freeze)
 ##  - VHS-artiger Rückspul-Effekt mit blinkendem ◀◀-Icon in der Bildmitte (Rewind)
-##  - unten links Munition + Aim-Stabilität, oben rechts Zeit und Tempo
+##  - unten links drei Officer-Icons (wen spiele ich gerade?), darüber Munition + Aim-Stabilität
+##  - oben links klein die Tastenbelegung, oben rechts Zeit und Tempo
 ## Alles per Code aufgebaut.
 
 const BAR_HEIGHT := 70.0
 const TAKEOVER_BAR_W := 320.0
 const TAKEOVER_BAR_H := 8.0
+const ICON_MARGIN := 16.0         # Abstand der Officer-Icons zum unteren Bildrand
+## Tastenbelegung (oben links): [Taste, Wirkung]
+const KEY_HELP := [
+	["W A S D", "Bewegen"],
+	["Maus", "Zielen"],
+	["Rechte Maustaste", "Waffe anlegen (halten)"],
+	["Linksklick", "Schießen (nur angelegt)"],
+	["Leertaste", "Spezialfähigkeit"],
+	["C / Strg", "Ducken"],
+	["E", "Tür öffnen"],
+	["F / Enter", "Position halten"],
+	["1 / 2 / Mausrad", "Zeitlupe"],
+	["Esc", "Pause"],
+]
+
+
+## Stilisiertes Icon eines Officers (unten links). Die Silhouette verrät die Rolle:
+##  "flash"  – normale Figur, hält eine Blendgranate hoch
+##  "shield" – stämmige Figur hinter einem großen Schild
+##  "roll"   – dünne, große Figur im Laufschritt (der schnelle, agile Officer)
+## Zustand: "active" (wird gerade gespielt) hell mit farbigem Rahmen, "dead"
+## ausgegraut und durchgestrichen, alles andere abgedunkelt.
+class OfficerIcon extends Control:
+	const W := 84.0
+	const H := 118.0
+
+	var number := 1
+	var role := ""
+	var caption := ""
+	var color := Color.WHITE
+	var state := ""
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(W, H)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func set_info(p_role: String, p_caption: String, p_color: Color, p_state: String) -> void:
+		if p_role == role and p_caption == caption and p_color == color and p_state == state:
+			return
+		role = p_role
+		caption = p_caption
+		color = p_color
+		state = p_state
+		queue_redraw()
+
+	func _draw() -> void:
+		var is_active := state == "active"
+		var dead := state == "dead"
+		# Karte
+		var card := StyleBoxFlat.new()
+		card.set_corner_radius_all(8)
+		card.set_border_width_all(3 if is_active else 2)
+		if is_active:
+			card.bg_color = Color(color.darkened(0.55), 0.92)
+			card.border_color = color.lightened(0.55)
+		elif dead:
+			card.bg_color = Color(0.22, 0.05, 0.05, 0.8)
+			card.border_color = Color(0.5, 0.12, 0.1)
+		else:
+			card.bg_color = Color(0.06, 0.07, 0.09, 0.8)
+			card.border_color = Color(color.darkened(0.3), 0.7)
+		draw_style_box(card, Rect2(Vector2.ZERO, Vector2(W, H)))
+
+		# Farben der Figur
+		var body := color.lightened(0.15)
+		var text_col := Color.WHITE
+		if dead:
+			body = Color(0.42, 0.42, 0.44)
+			text_col = Color(0.8, 0.5, 0.5)
+		elif not is_active:
+			body = color.darkened(0.4)
+			text_col = Color(0.65, 0.65, 0.65)
+		var dark := body.darkened(0.5)
+		var visor := Color(0.6, 0.85, 1.0) if is_active else Color(0.4, 0.5, 0.58)
+		var cx := W * 0.5
+
+		match role:
+			"flash":
+				_limb(Vector2(cx - 6, 74), Vector2(cx - 7, 96), 8.0, dark)
+				_limb(Vector2(cx + 6, 74), Vector2(cx + 7, 96), 8.0, dark)
+				_rrect(Rect2(cx - 12, 44, 24, 32), body, 5)
+				_limb(Vector2(cx - 15, 48), Vector2(cx - 17, 68), 7.0, body)
+				_limb(Vector2(cx + 15, 48), Vector2(cx + 25, 34), 7.0, body)   # Wurfarm oben
+				draw_circle(Vector2(cx, 33), 10.0, dark)
+				draw_rect(Rect2(cx - 6, 31, 12, 4), visor)
+				# Blendgranate in der erhobenen Hand, darüber Blitz-Strahlen
+				var can := Color(0.86, 0.88, 0.92) if not dead else Color(0.6, 0.6, 0.6)
+				var spark := Color(1.0, 0.85, 0.2) if is_active else Color(0.7, 0.6, 0.2)
+				draw_rect(Rect2(cx + 20.5, 19, 9, 13), can)
+				draw_rect(Rect2(cx + 20.5, 24, 9, 3), spark)
+				draw_rect(Rect2(cx + 22.5, 16, 5, 3), dark)
+				var tip := Vector2(cx + 25, 13)
+				for ang: float in [-150.0, -115.0, -90.0, -65.0, -30.0]:
+					var d := Vector2.RIGHT.rotated(deg_to_rad(ang))
+					draw_line(tip + d * 3.0, tip + d * 8.0, spark, 2.0, true)
+			"shield":
+				_limb(Vector2(cx - 12, 74), Vector2(cx - 12, 96), 9.0, dark)
+				_limb(Vector2(cx, 74), Vector2(cx, 96), 9.0, dark)
+				_rrect(Rect2(cx - 20, 44, 28, 32), body, 5)
+				_limb(Vector2(cx - 22, 49), Vector2(cx - 23, 68), 8.0, body)
+				draw_circle(Vector2(cx - 6, 33), 10.0, dark)
+				draw_rect(Rect2(cx - 12, 31, 12, 4), visor)
+				# großes Schild vor dem Körper, mit Sichtfenster wie im Spiel
+				var plate := Color(0.2, 0.25, 0.34) if not dead else Color(0.25, 0.25, 0.27)
+				_rrect(Rect2(cx - 6, 38, 34, 58), plate, 5, plate.lightened(0.45), 2)
+				draw_rect(Rect2(cx + 2, 47, 18, 5), visor)
+			"roll":
+				# Tempo-Striche hinter der Figur
+				var streak := Color(text_col, 0.55)
+				draw_line(Vector2(cx - 33, 42), Vector2(cx - 17, 42), streak, 2.0)
+				draw_line(Vector2(cx - 36, 56), Vector2(cx - 21, 56), streak, 2.0)
+				draw_line(Vector2(cx - 31, 70), Vector2(cx - 19, 70), streak, 2.0)
+				# hinteres Bein und hinterer Arm
+				_limb(Vector2(cx - 2, 62), Vector2(cx - 10, 82), 6.0, dark)
+				_limb(Vector2(cx - 10, 82), Vector2(cx - 20, 93), 6.0, dark)
+				_limb(Vector2(cx + 2, 34), Vector2(cx - 9, 44), 5.0, body)
+				_limb(Vector2(cx - 9, 44), Vector2(cx - 14, 53), 5.0, body)
+				# schmaler, langer Rumpf, leicht nach vorn geneigt
+				_limb(Vector2(cx + 2, 32), Vector2(cx - 2, 62), 10.0, body)
+				# vorderes Bein und vorderer Arm
+				_limb(Vector2(cx - 2, 62), Vector2(cx + 10, 80), 6.0, dark)
+				_limb(Vector2(cx + 10, 80), Vector2(cx + 8, 98), 6.0, dark)
+				_limb(Vector2(cx + 2, 34), Vector2(cx + 13, 45), 5.0, body)
+				_limb(Vector2(cx + 13, 45), Vector2(cx + 20, 37), 5.0, body)
+				draw_circle(Vector2(cx + 4, 19), 7.5, dark)
+				draw_rect(Rect2(cx + 2, 17.5, 9, 3), visor)
+
+		if dead:
+			var red := Color(0.9, 0.15, 0.1, 0.85)
+			draw_line(Vector2(14, 22), Vector2(W - 14, 98), red, 4.0, true)
+			draw_line(Vector2(W - 14, 22), Vector2(14, 98), red, 4.0, true)
+
+		var font := get_theme_default_font()
+		draw_string(font, Vector2(8, 19), str(number), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 16, text_col)
+		draw_string(font, Vector2(0, H - 6), caption, HORIZONTAL_ALIGNMENT_CENTER, W, 12, text_col)
+
+	## Gliedmaße: dicke Linie mit runden Enden.
+	func _limb(a: Vector2, b: Vector2, width: float, col: Color) -> void:
+		draw_line(a, b, col, width, true)
+		draw_circle(a, width * 0.5, col)
+		draw_circle(b, width * 0.5, col)
+
+	## Rechteck mit runden Ecken, optional mit Rand.
+	func _rrect(rect: Rect2, col: Color, radius: int, border := Color.TRANSPARENT, border_width := 0) -> void:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = col
+		sb.set_corner_radius_all(radius)
+		sb.border_color = border
+		sb.set_border_width_all(border_width)
+		draw_style_box(sb, rect)
 
 ## Zuletzt gezeigte Texte (praktisch für Tests und Debugging).
 var card_title := ""
@@ -33,7 +184,8 @@ var _special: Label
 var _stab: ProgressBar
 var _stats: Control
 var _clock: Label
-var _hint: Label
+var _hint: PanelContainer         # Tastenbelegung, klein oben links
+var _icons: Array = []            # OfficerIcon je Officer, unten links
 var _panel: PanelContainer
 var _panel_label: Label
 
@@ -165,7 +317,7 @@ func _ready() -> void:
 	_stats.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	_stats.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_stats.offset_left = 24
-	_stats.offset_bottom = -52
+	_stats.offset_bottom = -(ICON_MARGIN + OfficerIcon.H + 10.0)
 	_ammo = _label(_stats, 22, Color.WHITE)
 	_special = _label(_stats, 20, Color(1.0, 0.85, 0.2))
 	var cap := _label(_stats, 16, Color(0.8, 0.8, 0.8))
@@ -188,12 +340,40 @@ func _ready() -> void:
 	_clock.offset_top = 14
 	_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
-	_hint = _label(root, 16, Color(0.75, 0.75, 0.75))
-	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_hint.offset_top = -34
-	_hint.offset_bottom = -10
-	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint.text = "WASD bewegen · Maus zielen · Rechte Maustaste halten = Waffe anlegen · Linksklick schießen (nur beim Anlegen) · Leertaste = Spezialfähigkeit · C ducken · E Tür öffnen · F Position halten · 1/2 oder Mausrad Zeitlupe · ESC Pause"
+	# --- unten links: ein Icon pro Officer, der gespielte ist hervorgehoben ---
+	var icon_row := HBoxContainer.new()
+	icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_row.add_theme_constant_override("separation", 8)
+	root.add_child(icon_row)
+	icon_row.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	icon_row.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	icon_row.offset_left = 24
+	icon_row.offset_bottom = -ICON_MARGIN
+	for i in 3:
+		var icon := OfficerIcon.new()
+		icon.number = i + 1
+		icon_row.add_child(icon)
+		_icons.append(icon)
+
+	# --- oben links: Tastenbelegung als kleine Tabelle ---
+	_hint = PanelContainer.new()
+	_hint.add_theme_stylebox_override("panel", _box(Color(0.05, 0.06, 0.08, 0.6), Color(1, 1, 1, 0.12), 8))
+	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_hint)
+	_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_hint.offset_left = 12
+	_hint.offset_top = 10
+	var keys := GridContainer.new()
+	keys.columns = 2
+	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	keys.add_theme_constant_override("h_separation", 12)
+	keys.add_theme_constant_override("v_separation", 0)
+	_hint.add_child(keys)
+	for pair in KEY_HELP:
+		for col in 2:
+			var kl := _label(keys, 12, Color(1.0, 0.85, 0.2) if col == 0 else Color(0.82, 0.82, 0.82))
+			kl.add_theme_constant_override("outline_size", 3)
+			kl.text = pair[col]
 
 	# --- Tafel in der Mitte (Fehlschlag, Ergebnis) ---
 	_panel = PanelContainer.new()
@@ -269,8 +449,14 @@ func set_phase(text: String, color: Color) -> void:
 	_phase.add_theme_color_override("font_color", color)
 
 
-## chips: pro Officer {text: String, color: Color, state: "active"|"done"|"wait"|"dead"}
+## chips: pro Officer {text: String, color: Color, state: "active"|"done"|"wait"|"dead",
+##                      role: String, name: String (Kurzname der Rolle fürs Icon)}
 func set_squad(chips: Array) -> void:
+	for i in _icons.size():
+		var icon: OfficerIcon = _icons[i]
+		icon.visible = i < chips.size()
+		if icon.visible:
+			icon.set_info(chips[i].get("role", ""), chips[i].get("name", ""), chips[i].color, chips[i].state)
 	for i in _chips.size():
 		var c: Dictionary = _chips[i]
 		c.panel.visible = i < chips.size()
