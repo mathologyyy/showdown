@@ -373,7 +373,7 @@ func _start_turn() -> void:
 	_count_left = -1.0
 	_count_digit = 0
 	# Während des Countdowns vergeht (wegen des Abbremsens) so viel Spielzeit:
-	var ramp_ticks := int(COUNT_TOTAL * (1.0 + TimeControl.slowmo_scale) * 0.5 * TimeControl.SIM_HZ)
+	var ramp_ticks := int(COUNT_TOTAL * (1.0 + TimeControl.rest_scale()) * 0.5 * TimeControl.SIM_HZ)
 	_count_start = maxi(0, _takeover_tick - ramp_ticks)
 	_hud.set_panel_text("")
 	_hud.set_freeze(false)
@@ -415,7 +415,7 @@ func _update_countdown(real_dt: float) -> void:
 		TimeControl.override_scale = 1.0
 		if tick >= _count_start and _settle == 0:
 			_count_left = COUNT_TOTAL
-			if _takeover_tick > 0:
+			if _takeover_tick > 0 and TimeControl.rest_scale() < 0.95:
 				_snd.play("slowdown")
 		else:
 			return
@@ -431,7 +431,7 @@ func _update_countdown(real_dt: float) -> void:
 		_hud.hide_card()
 		_hud.show_big(str(digit), COL_GO, COUNT_STEP)
 	var k := 1.0 - _count_left / COUNT_TOTAL
-	TimeControl.override_scale = lerpf(1.0, TimeControl.slowmo_scale, smoothstep(0.0, 1.0, k))
+	TimeControl.override_scale = lerpf(1.0, TimeControl.rest_scale(), smoothstep(0.0, 1.0, k))
 
 
 ## Der Spieler bekommt die Kontrolle über den aktiven Officer.
@@ -1157,6 +1157,7 @@ func _process(_delta: float) -> void:
 	var real_dt := minf((now - _last_usec) / 1000000.0, 0.1)
 	_last_usec = now
 	_time += real_dt
+	TimeControl.aiming = phase == Phase.PLAYING and _taken and active != null and active.alive and active.aiming
 
 	# Vorlauf in Echtzeit, dann Countdown mit Abbremsen auf Zeitlupe
 	if phase == Phase.PLAYING and not _taken:
