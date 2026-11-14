@@ -103,6 +103,7 @@ var _camera: Camera3D
 var _vision: VisionSystem
 var _fx: FxOverlay
 var _hud: Hud
+var _pause: PauseMenu
 var _officer_lasers: Array[LaserBeam] = []
 var _reflect_lasers: Array[LaserBeam] = []   # an Metall gespiegelter Teil der Officer-Laser
 var _enemy_lasers: Array[LaserBeam] = []
@@ -209,6 +210,8 @@ func _ready() -> void:
 	_fx.camera = _camera
 	_hud = Hud.new()                      # CanvasLayer 3: HUD
 	add_child(_hud)
+	_pause = PauseMenu.new()              # CanvasLayer 10: Pausemenü
+	add_child(_pause)
 
 	_last_usec = Time.get_ticks_usec()
 	_start_intro()
@@ -1179,8 +1182,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if phase == Phase.FAILED or phase == Phase.RESULTS:
 					TimeControl.override_scale = -1.0
 					get_tree().reload_current_scene()
-			KEY_ESCAPE:
-				get_tree().quit()
+			# ESC gehört dem Pausemenü (scripts/pause_menu.gd)
 
 
 func request_fire() -> void:
@@ -1237,6 +1239,13 @@ func _mouse_world_point() -> Vector3:
 # =============================================================================
 #  Darstellung (pro Frame, unabhängig vom Simulations-Takt)
 # =============================================================================
+
+## Nach dem Aufheben der Pause: echte Zeitmessung neu starten, damit _process
+## nach dem Fortsetzen keinen Zeitsprung sieht.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_UNPAUSED:
+		_last_usec = Time.get_ticks_usec()
+
 
 func _process(_delta: float) -> void:
 	var now := Time.get_ticks_usec()

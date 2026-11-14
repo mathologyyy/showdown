@@ -25,7 +25,7 @@ Oder direkt im Terminal: `godot --path .`
 | 1 / 2 oder Mausrad | Zeitlupe langsamer / schneller |
 | R | nach Fehlschlag: Durchlauf wiederholen · im Ergebnis: Replay erneut |
 | N | neue Mission (nach Fehlschlag oder Ergebnis) |
-| Esc | Beenden |
+| Esc | Pausemenü (Fortsetzen / Mission neu starten / Beenden) |
 
 ## Das Squad
 
