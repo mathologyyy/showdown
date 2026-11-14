@@ -51,6 +51,7 @@ var _roll_cd := 0.0
 var _recover := 0.0
 var _roll_dir := Vector3.ZERO
 var _shield_mesh: Node3D
+var _shield_raise := 1.0                 # letzter an set_shield_raise übergebener Wert
 
 
 ## Übernimmt alle Gameplay-Werte des Officers aus den Tweaks (Sektion "player").
@@ -225,6 +226,28 @@ func set_alive(value: bool, instant := false) -> void:
 		_set_aiming(false)
 		_set_shield(false)
 		rolling = false
+
+
+## Rein optisch: Schild-Haltung zwischen gesenkt (k = 0) und normal (k = 1).
+## Ändert NICHTS an der Simulation (shield_up, shield_center() usw. bleiben unverändert).
+## Wird jeden Frame aufgerufen: bei unverändertem k früh zurückkehren.
+func set_shield_raise(k: float) -> void:
+	if not _shield_mesh:
+		return
+	k = clampf(k, 0.0, 1.0)
+	if k == _shield_raise:
+		return
+	_shield_raise = k
+	if k >= 1.0:
+		# exakt die Normalhaltung aus _build_shield()
+		_shield_mesh.position = Vector3(0.0, 0.85, SHIELD_DIST)
+		_shield_mesh.rotation = Vector3.ZERO
+		_shield_mesh.scale = Vector3.ONE
+	else:
+		# gesenkt: tiefere Position, Oberkante kippt nach vorn, etwas kleiner
+		_shield_mesh.position = Vector3(0.0, lerpf(0.30, 0.85, k), SHIELD_DIST)
+		_shield_mesh.rotation = Vector3(deg_to_rad(65.0) * (1.0 - k), 0.0, 0.0)
+		_shield_mesh.scale = Vector3.ONE * lerpf(0.85, 1.0, k)
 
 
 func _build_shield() -> void:

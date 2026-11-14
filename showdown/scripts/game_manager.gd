@@ -65,6 +65,8 @@ const GRENADE_GRAVITY := 12.0
 const GRENADE_BOUNCE := 0.4         # so viel Höhe bleibt nach einem Aufprall
 const GRENADE_KEEP := 0.5           # so viel Tempo bleibt nach Boden- oder Wandkontakt
 const SHOT_CUT_SECONDS := 2.0       # Nahaufnahme beim eigenen Schuss (echte Sekunden)
+const ABILITY_CUT_SECONDS := 1.6    # Nahaufnahme bei Granatenwurf und Schildheben (echte Sekunden)
+const CUT_ANIM_SCALE := 0.5         # Animationstempo der gezeigten Figur während eines Fähigkeiten-Clips
 const CUT_ZOOM := 0.42              # Kameraabstand in der Nahaufnahme (Anteil der Totalen)
 const CUT_BULLET_METERS := 1.0      # so weit fliegt die Kugel in der Nahaufnahme
 const INTRO_SECONDS := 2.4          # Rammbock-Intro
@@ -125,7 +127,7 @@ var _ghosts: Array = []              # Vorschau früherer Officer: [{color, pts:
 var _deadline_count := 0
 var _snd: SoundBank
 var _crouch_req := false             # C gedrückt: ducken / aufstehen
-var _cut: Dictionary = {}            # Nahaufnahme beim Schuss: {from, dir}
+var _cut: Dictionary = {}            # Nahaufnahme-Clip: {kind: "shot", from, dir} | {kind: "grenade", from, to, actor, path} | {kind: "shield", actor}
 var _cam_k := 0.0                    # 0 = Totale, 1 = Nahaufnahme
 var _cam_focus := Vector3.ZERO
 var _go_step := 3                    # "GO", "GO GO", "GO GO GO" nacheinander
@@ -712,11 +714,19 @@ func _sim_tick(dt: float) -> void:
 					var target := _grenade_target(o, inp.aim)
 					_track.throws.append({"tick": tick, "target": target})
 					if GRENADE_ENDS_TURN:
-						_begin_break("GRANATE GEWORFEN", "Officer %d  ·  Wirkung ungewiss" % (o.idx + 1), COL_FREEZE)
+						# Nahaufnahme: Wurfbewegung, Kamera auf den Werfer, Granate auf ihrer echten Flugbahn
+						_cut = {"kind": "grenade", "from": o.eye(), "to": target, "actor": o,
+							"path": _grenade_preview(o.eye(), target)}
+						_cam_focus = o.global_position
+						o.model.throw()
+						_begin_break("GRANATE GEWORFEN", "Officer %d  ·  Wirkung ungewiss" % (o.idx + 1), COL_FREEZE, ABILITY_CUT_SECONDS)
 						return
 					_throw_grenade(o.eye(), target, false)
 				if SHIELD_ENDS_TURN and o.shield_up and not shield_before:
-					_begin_break("SCHILD OBEN", "Officer %d deckt ab jetzt nach vorn" % (o.idx + 1), COL_FREEZE)
+					# Nahaufnahme: Kamera auf den Officer, der das Schild hebt
+					_cut = {"kind": "shield", "actor": o}
+					_cam_focus = o.global_position
+					_begin_break("SCHILD OBEN", "Officer %d deckt ab jetzt nach vorn" % (o.idx + 1), COL_FREEZE, ABILITY_CUT_SECONDS)
 					return
 			else:
 				_track.add_frame(o)
@@ -731,7 +741,7 @@ func _sim_tick(dt: float) -> void:
 					_track.shots.append({"tick": tick, "dir": dir})
 					_shot_fx(o, dir)
 					# Nahaufnahme: Mündungsfeuer und die Kugel auf ihrem ersten Meter
-					_cut = {"from": o.eye(), "dir": dir}
+					_cut = {"kind": "shot", "from": o.eye(), "dir": dir}
 					_cam_focus = o.global_position
 					_begin_break("FREEZE", "Officer %d hat geschossen  ·  Treffer ungewiss" % (o.idx + 1),
 							COL_FREEZE, SHOT_CUT_SECONDS)
@@ -751,6 +761,7 @@ func _sim_tick(dt: float) -> void:
 			for s in tr.throws:
 				if s.tick == tick and o.grenades > 0:
 					o.grenades -= 1
+					o.model.throw()          # nur Optik: Wurfbewegung der aufgezeichneten Figur
 					_throw_grenade(o.eye(), s.target, false)
 			for s in tr.shots:
 				if s.tick == tick and o.ammo > 0:
@@ -1283,12 +1294,25 @@ func _process(_delta: float) -> void:
 		# Animationen laufen im Rückspul-Tempo
 		anim_scale = _rw_rate / TimeControl.SIM_HZ
 	elif phase == Phase.BREAK or phase == Phase.FAILED or phase == Phase.RESULTS:
-		# ... außer in der Schuss-Nahaufnahme: dort läuft alles in extremer Zeitlupe weiter
+		# ... außer in der Nahaufnahme (Clip): dort läuft alles in extremer Zeitlupe weiter
 		anim_scale = 0.0 if _cut.is_empty() else 0.035
 	for a in _all:
-		a.model.update(a.speed, anim_scale, real_dt * anim_scale)
+		# während des Granaten-Clips läuft die Wurfbewegung der gezeigten Figur mit eigenem Tempo
+		var a_scale := anim_scale
+		if phase == Phase.BREAK and _cut.get("kind", "") == "grenade" and _cut.get("actor") == a:
+			a_scale = CUT_ANIM_SCALE
+		a.model.update(a.speed, a_scale, real_dt * a_scale)
 	for d in doors:
 		d.animate(real_dt * anim_scale)
+
+	# Schild-Optik (rein visuell): während des Schild-Clips fährt das Schild in den ersten 60 % hoch
+	for o in officers:
+		if o.role != "shield":
+			continue
+		var r := 1.0
+		if phase == Phase.BREAK and _cut.get("kind", "") == "shield" and _cut.get("actor") == o:
+			r = smoothstep(0.0, 1.0, clampf((1.0 - _break_left / ABILITY_CUT_SECONDS) / 0.6, 0.0, 1.0))
+		o.set_shield_raise(r)
 
 	_update_camera(real_dt)
 	_update_vision_and_lasers()
@@ -1479,7 +1503,8 @@ func _update_fx(game_dt: float, real_dt: float) -> void:
 	var list := []
 	for b in _bullets:
 		list.append({"pos": (b.prev as Vector3).lerp(b.pos, f), "dir": b.dir, "enemy": b.enemy})
-	if not _cut.is_empty():
+	var cut_kind: String = _cut.get("kind", "")
+	if cut_kind == "shot":
 		# Nahaufnahme: die Kugel löst sich und fliegt ihren ersten Meter
 		var k := clampf(1.0 - _break_left / SHOT_CUT_SECONDS, 0.0, 1.0)
 		var flown := CUT_BULLET_METERS * k
@@ -1489,6 +1514,24 @@ func _update_fx(game_dt: float, real_dt: float) -> void:
 	var glist := []
 	for g in _grenades:
 		glist.append({"ground": Vector3(g.pos.x, 0.05, g.pos.z), "pos": g.pos})
+	if cut_kind == "grenade" and _cut.has("path"):
+		# Nahaufnahme: die Granate fliegt das erste Stück ihrer echten Flugbahn entlang
+		var k := clampf(1.0 - _break_left / ABILITY_CUT_SECONDS, 0.0, 1.0)
+		if k >= 0.25:
+			# in den ersten 25 % des Clips Ausholbewegung, danach fliegt sie los (k auf 0..1 umrechnen)
+			var kk := clampf((k - 0.25) / 0.75, 0.0, 1.0)
+			var path: Array = _cut.path
+			var want := 2.5 * kk              # höchstens die ersten 2,5 m der Bahn
+			var acc := 0.0
+			var pos: Vector3 = path[path.size() - 1]
+			for i in range(1, path.size()):
+				var seg: float = (path[i] as Vector3).distance_to(path[i - 1] as Vector3)
+				if seg > 0.0 and acc + seg >= want:
+					pos = (path[i - 1] as Vector3).lerp(path[i] as Vector3, (want - acc) / seg)
+					break
+				acc += seg
+				pos = path[i]
+			glist.append({"ground": Vector3(pos.x, 0.05, pos.z), "pos": pos})
 	_fx.grenades = glist
 	_fx.advance(game_dt, real_dt)
 

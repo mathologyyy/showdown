@@ -159,6 +159,15 @@ func punch() -> void:
 	_anim.seek(0.0, true)
 
 
+## Wurfbewegung für die Blendgranate.
+func throw() -> void:
+	if _dead or _rolling:
+		return
+	_state = "shoot"
+	_anim.play("Punch", 0.05, 1.0)
+	_anim.seek(0.0, true)
+
+
 func shoot() -> void:
 	if _dead or _rolling or _crouched or not _armed or _state == "run" or _state == "walk":
 		return   # im Laufen zeigt die Lauf-Animation bereits die Schusshaltung

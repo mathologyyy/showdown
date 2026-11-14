@@ -48,6 +48,7 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
   nächsten Zug. Gegnerschüsse beenden den Zug nicht mehr: ihre Kugeln fliegen sofort.
   (Umschaltbar über drei Konstanten ganz oben in `scripts/game_manager.gd`.)
 - Beim eigenen Schuss fährt die Kamera 2 Sekunden lang nah an den Schützen.
+  Granatenwurf und Schildheben zeigen ebenfalls eine kurze Nahaufnahme in Zeitlupe.
 - Nach jedem Zug wird sichtbar **zurückgespult**: der Zug läuft rückwärts bis zum Checkpoint,
   mit ◀◀-Symbol, VHS-Verzerrung und entsättigtem Bild.
 - Das normale Spiel läuft in **Echtzeit**; die Zeitlupe gilt nur, solange die Waffe angelegt ist
