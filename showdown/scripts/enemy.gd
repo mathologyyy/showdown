@@ -11,6 +11,8 @@ extends Actor
 ##  Deckung           – nach einem eigenen Schuss oder einem knappen Fehlschuss weicht er
 ##                      hinter ein Möbelstück aus und kommt nach kurzer Zeit zurück
 ##
+##  Waffe: im Zustand GUARD ist sie gesenkt und wird bei Alarm (Sichtung/Geräusch) gezogen.
+##
 ## Kein Zufall außer der Streuung, und die wird aus (Gegner, Tick) geseedet.
 ## Gleiche Lage ergibt also in jeder Runde exakt dasselbe Verhalten.
 
@@ -19,10 +21,12 @@ enum Mode { NONE, GO, WAIT, RETURN }
 
 const FLAG_BLIND := 4
 const FLAG_ENGAGE := 8
+const FLAG_ARMED := 16
 
 @export var view_range := 10.0
 @export var fov_half_deg := 50.0
 @export var reaction_time := 0.7        # Spielsekunden von Sichtkontakt bis Schuss
+@export var draw_time := 0.4            # Spielsekunden bis die Waffe im Anschlag ist
 @export var fire_cooldown := 1.0
 @export var turn_speed_deg := 220.0
 @export var patrol_speed := 0.6
@@ -46,6 +50,7 @@ var patrol: Array = []                    # optionale Wegpunkte (Vector3)
 var vis_engage := false                   # hat einen Officer gesichtet -> Laser sichtbar
 var vis_blind := false
 var vis_aim := 0.0                        # 0..1, bei 1 fällt der nächste Schuss
+var vis_armed := false                    # Waffe im Anschlag (für Anzeige und Replay)
 
 var _scan_phase := 0.0
 var _patrol_i := 0
@@ -54,6 +59,7 @@ var _cooldown := 0.0
 var _alert_pos := Vector3.ZERO
 var _alert_time := 0.0
 var _blind := 0.0                         # verbleibende Blend-Zeit (Spielsekunden)
+var _draw := 0.4                          # verbleibende Zieh-Zeit (Spielsekunden)
 var _alerted := false                     # war schon einmal alarmiert
 var _hostage := -1                        # Index der bedrohten Geisel
 var _exec := 0.0                          # verbleibende Frist
@@ -80,17 +86,25 @@ func apply_tweaks() -> void:
 	cover_wait = Tweaks.num("enemy", "cover_wait", 1.0)
 	cover_cooldown = Tweaks.num("enemy", "cover_cooldown", 4.0)
 	threat_time = Tweaks.num("enemy", "threat_time", 10.0)
+	draw_time = Tweaks.num("enemy", "weapon_draw_time", 0.4)
+	_draw = draw_time
 
 
 func sim_tick(dt: float) -> void:
 	_cooldown = maxf(0.0, _cooldown - dt)
 	_cover_cd = maxf(0.0, _cover_cd - dt)
 	_think(dt)
+	if state == State.GUARD:
+		_draw = draw_time            # Waffe gesenkt; beim nächsten Alarm neu ziehen
+	else:
+		_draw = maxf(0.0, _draw - dt)
+	vis_armed = state != State.GUARD and _draw <= 0.0
+	model.set_aiming(vis_armed)
 	vis_blind = _blind > 0.0
-	vis_engage = state == State.ENGAGE and _mode == Mode.NONE and not vis_blind
+	vis_engage = vis_armed and state == State.ENGAGE and _mode == Mode.NONE and not vis_blind
 	vis_aim = 0.0
 	if vis_engage:
-		vis_aim = 1.0 - maxf(_react / reaction_time, _cooldown / fire_cooldown)
+		vis_aim = 1.0 - maxf(maxf(_react / reaction_time, _cooldown / fire_cooldown), _draw / maxf(draw_time, 0.001))
 
 
 func _think(dt: float) -> void:
@@ -112,7 +126,7 @@ func _think(dt: float) -> void:
 			_hostage = -1
 		else:
 			_exec -= dt
-			if _exec <= 0.0 and _mode == Mode.NONE:
+			if _exec <= 0.0 and _mode == Mode.NONE and _draw <= 0.0:
 				# Frist abgelaufen: Waffe auf die Geisel, Schuss
 				var want := yaw_to(h.global_position)
 				_turn(want, dt)
@@ -134,7 +148,7 @@ func _think(dt: float) -> void:
 		var want := yaw_to(target.global_position)
 		_turn(want, dt)
 		_react = maxf(0.0, _react - dt)
-		if _react <= 0.0 and _cooldown <= 0.0 \
+		if _react <= 0.0 and _cooldown <= 0.0 and _draw <= 0.0 \
 				and absf(angle_difference(yaw, want)) < deg_to_rad(2.5):
 			_cooldown = fire_cooldown
 			game.enemy_fire(self, _spread_dir())
@@ -190,13 +204,16 @@ func hostage_index() -> int:
 
 
 func flags() -> int:
-	return (FLAG_BLIND if vis_blind else 0) | (FLAG_ENGAGE if vis_engage else 0)
+	return (FLAG_BLIND if vis_blind else 0) | (FLAG_ENGAGE if vis_engage else 0) \
+		| (FLAG_ARMED if vis_armed else 0)
 
 
 func apply_flags(f: int) -> void:
 	vis_blind = f & FLAG_BLIND != 0
-	vis_engage = f & FLAG_ENGAGE != 0
+	vis_armed = f & FLAG_ARMED != 0
+	vis_engage = vis_armed and f & FLAG_ENGAGE != 0
 	vis_aim = 0.0
+	model.set_aiming(vis_armed)
 
 
 # --- Reaktionen -----------------------------------------------------------------
@@ -343,6 +360,7 @@ func get_state() -> Dictionary:
 		"cooldown": _cooldown, "alert_pos": _alert_pos, "alert_time": _alert_time, "blind": _blind,
 		"alerted": _alerted, "hostage": _hostage, "exec": _exec, "mode": _mode, "mode_t": _mode_t,
 		"goal": _goal, "return_pos": _return_pos, "wait_after": _wait_after, "cover_cd": _cover_cd,
+		"draw": _draw,
 	})
 	return s
 
@@ -366,6 +384,9 @@ func set_state(s: Dictionary) -> void:
 	_return_pos = s.return_pos
 	_wait_after = s.wait_after
 	_cover_cd = s.cover_cd
+	_draw = s.draw
 	vis_blind = _blind > 0.0
-	vis_engage = state == State.ENGAGE and _mode == Mode.NONE and not vis_blind
+	vis_armed = state != State.GUARD and _draw <= 0.0
+	vis_engage = vis_armed and state == State.ENGAGE and _mode == Mode.NONE and not vis_blind
 	vis_aim = 0.0
+	model.set_aiming(vis_armed)

@@ -53,7 +53,6 @@ func setup(p_idx: int, kind: String, p_color: Color, layer: int, label := "") ->
 	model = CharacterModel.new()
 	_visual.add_child(model)
 	model.build(kind, p_color)
-	model.set_aiming(kind == "enemy")   # Gegner vorerst immer im Anschlag (wird später von der KI gesteuert)
 
 	if label != "":
 		var l := Label3D.new()
