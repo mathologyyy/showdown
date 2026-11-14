@@ -3,7 +3,10 @@
     "allow": [
       "Bash(vibe:*)",
       "Bash(git status:*)",
-      "Bash(git diff:*)"
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)"
     ]
   }
 }
