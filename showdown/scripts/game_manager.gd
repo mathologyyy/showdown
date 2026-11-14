@@ -10,7 +10,8 @@ extends Node3D
 ## und der Spieler übernimmt den nächsten Officer ("Übernahme"). Vor jeder Übernahme
 ## läuft ein Countdown 3 – 2 – 1 – GO GO GO.
 ##
-## Spezialfähigkeiten (Aktionstaste): Blendgranate, Schild, Hechtrolle – siehe officer.gd.
+## Spezialfähigkeiten (Leertaste): Blendgranate, Schild, Hechtrolle – siehe officer.gd.
+## Rechte Maustaste halten legt die Waffe an (Laser, Streubogen, Schießen).
 ## Kugeln prallen an Metall-Objekten (Level.METAL) ab.
 ##
 ## Sind in einer Auswertung alle Gegner ausgeschaltet, folgt das Abschluss-Replay
@@ -85,7 +86,8 @@ var tick := 0
 var active: Officer = null
 var rounds := RoundSystem.new()
 
-## Optional für Tests/Bots: ersetzt Maus+Tastatur. Liefert {move: Vector2, aim: Vector3}.
+## Optional für Tests/Bots: ersetzt Maus+Tastatur.
+## Liefert {move: Vector2, aim: Vector3, action: bool, aim_hold: bool} (aim_hold optional).
 var input_provider: Callable
 
 var _all: Array[Actor] = []          # officers + enemies + hostages, feste Reihenfolge
@@ -620,7 +622,7 @@ func _sim_tick(dt: float) -> void:
 				var crouch := _crouch_req
 				_crouch_req = false
 				var shield_before := o.shield_up
-				var thrown := o.control_tick(inp.move, inp.aim, held, pressed, crouch, dt)
+				var thrown := o.control_tick(inp.move, inp.aim, inp.get("aim_hold", false), held, pressed, crouch, dt)
 				_track.add_frame(o)
 				if thrown:
 					var target := _grenade_target(o, inp.aim)
@@ -1063,15 +1065,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			request_fire()
-		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			request_action()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			TimeControl.adjust(0.01)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			TimeControl.adjust(-0.01)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
-			KEY_SHIFT:
+			KEY_SPACE:
 				request_action()
 			KEY_F, KEY_ENTER:
 				request_hold()
@@ -1133,9 +1133,9 @@ func _read_input() -> Dictionary:
 	if Input.is_physical_key_pressed(KEY_S): move.y += 1.0
 	if Input.is_physical_key_pressed(KEY_A): move.x -= 1.0
 	if Input.is_physical_key_pressed(KEY_D): move.x += 1.0
-	var action := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) \
-			or Input.is_physical_key_pressed(KEY_SHIFT)
-	return {"move": move.normalized(), "aim": _mouse_world_point(), "action": action}
+	var action := Input.is_physical_key_pressed(KEY_SPACE)
+	return {"move": move.normalized(), "aim": _mouse_world_point(), "action": action,
+			"aim_hold": Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)}
 
 
 ## Mauszeiger auf die Ebene in Schusshöhe projiziert.
@@ -1157,9 +1157,6 @@ func _process(_delta: float) -> void:
 	var real_dt := minf((now - _last_usec) / 1000000.0, 0.1)
 	_last_usec = now
 	_time += real_dt
-
-	TimeControl.fast_forward = phase == Phase.PLAYING and _taken \
-			and Input.is_physical_key_pressed(KEY_SPACE)
 
 	# Vorlauf in Echtzeit, dann Countdown mit Abbremsen auf Zeitlupe
 	if phase == Phase.PLAYING and not _taken:
@@ -1236,18 +1233,20 @@ func _update_vision_and_lasers() -> void:
 		# Officer, die gerade nicht gespielt werden, treten optisch zurück
 		var dim := active != null and o != active and (phase == Phase.PLAYING or phase == Phase.BREAK)
 		o.set_dim(dim)
-		beam.visible = o.alive
+		# Laser nur, wenn der Officer lebt UND die Waffe angelegt hat
+		beam.visible = o.alive and o.aiming
 		beam2.visible = false
 		if not o.alive:
 			continue
 		var ends := _laser_ends(o, poses[i].pos, poses[i].yaw)
-		beam.set_alpha(0.3 if dim else 0.9)
-		beam.set_points(ends[0], ends[1])
-		if ends.size() > 2:
-			# Laser spiegelt sich an Metall: zeigt, wohin ein Abpraller fliegen würde
-			beam2.visible = true
-			beam2.set_alpha(0.15 if dim else 0.55)
-			beam2.set_points(ends[1], ends[2])
+		if beam.visible:
+			beam.set_alpha(0.3 if dim else 0.9)
+			beam.set_points(ends[0], ends[1])
+			if ends.size() > 2:
+				# Laser spiegelt sich an Metall: zeigt, wohin ein Abpraller fliegen würde
+				beam2.visible = true
+				beam2.set_alpha(0.15 if dim else 0.55)
+				beam2.set_points(ends[1], ends[2])
 		if o == active and (phase == Phase.PLAYING or phase == Phase.BREAK):
 			_highlight_active(o, poses[i], ends)
 
@@ -1331,7 +1330,7 @@ func _highlight_active(o: Officer, pose: Dictionary, ends: Array) -> void:
 	_active_ring.scale = Vector3(pulse, 0.15, pulse)
 	(_active_ring.material_override as StandardMaterial3D).albedo_color = col
 	_fx.marker = {"pos": pose.pos, "color": col}
-	if _taken:
+	if _taken and o.aiming:
 		# Streuung: Bogen mit Radius = Entfernung zum Laser-Ende, Öffnung = ± Streuwinkel
 		_fx.arc = {"origin": ends[0], "yaw": pose.yaw, "spread": o.current_spread(),
 			"dist": (ends[0] as Vector3).distance_to(ends[1])}
@@ -1445,13 +1444,15 @@ func _special_text(o: Officer) -> String:
 	var text := ""
 	match o.role:
 		"flash":
-			text = "RECHTSKLICK   Blendgranate × %d" % o.grenades \
+			text = "LEERTASTE   Blendgranate × %d" % o.grenades \
 					+ ("  (beendet den Zug)" if GRENADE_ENDS_TURN else "")
 		"shield":
-			text = "RECHTSKLICK   Schild heben" + ("  (beendet den Zug)" if SHIELD_ENDS_TURN else "")
+			text = "LEERTASTE   Schild heben" + ("  (beendet den Zug)" if SHIELD_ENDS_TURN else "")
 		"roll":
-			text = "RECHTSKLICK   Hechtrolle  ·  " + ("bereit" if o.roll_ready() >= 1.0 else "lädt …")
-	return text + ("\nGEDUCKT  ·  C zum Aufstehen" if o.crouched else "\nC zum Ducken")
+			text = "LEERTASTE   Hechtrolle  ·  " + ("bereit" if o.roll_ready() >= 1.0 else "lädt …")
+	var aim_line := "WAFFE ANGELEGT  ·  Linksklick schießt" if o.aiming \
+			else "RECHTE MAUSTASTE halten: Waffe anlegen"
+	return text + ("\nGEDUCKT  ·  C zum Aufstehen" if o.crouched else "\nC zum Ducken") + "\n" + aim_line
 
 
 # --- Hilfen ---------------------------------------------------------------------

@@ -13,11 +13,8 @@ extends Node
 const SIM_HZ := 480
 const DT := 1.0 / SIM_HZ
 
-## Zeitlupe im normalen Spiel (0.10 = 10 % Echtzeit). Im Spiel mit Q/E änderbar.
+## Zeitlupe im normalen Spiel (0.10 = 10 % Echtzeit). Mit 1/2 oder Mausrad änderbar.
 var slowmo_scale := 0.10
-## Multiplikator, solange "Vorspulen" (Leertaste) gehalten wird.
-var fast_forward_factor := 5.0
-var fast_forward := false
 ## > 0: fester Wert, der die Zeitlupe überschreibt (Auswertung, Abschluss-Replay = 1.0).
 var override_scale := -1.0
 
@@ -33,7 +30,7 @@ func _process(_delta: float) -> void:
 func current_scale() -> float:
 	if override_scale > 0.0:
 		return override_scale
-	return slowmo_scale * (fast_forward_factor if fast_forward else 1.0)
+	return slowmo_scale
 
 
 func adjust(step: float) -> void:

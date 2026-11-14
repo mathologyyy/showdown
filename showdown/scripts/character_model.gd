@@ -24,6 +24,7 @@ const RUN_SPEED := 1.5          # ab dieser Geschwindigkeit (m/s) Lauf- statt Ge
 
 var _anim: AnimationPlayer
 var _armed := false
+var _aiming := false         # Waffe angelegt (Zielhaltung); nur optisch
 var _state := ""
 var _dead := false
 var _inst: Node3D
@@ -99,6 +100,16 @@ func update(speed: float, time_scale: float, game_dt := 0.0) -> void:
 		want = "walk"
 	if want != _state:
 		_enter(want)
+
+
+## Waffe anlegen/gesenkt. Merkt den Wert und wechselt sofort die Pose, solange die
+## Figur steht, geht oder läuft; bei toten/rollenden Figuren wird nur der Wert gemerkt.
+func set_aiming(on: bool) -> void:
+	if on == _aiming:
+		return
+	_aiming = on
+	if _state == "stand" or _state == "walk" or _state == "run":
+		_enter(_state)
 
 
 ## Abdunkeln über ein halbtransparentes schwarzes Overlay auf allen Meshes.
@@ -180,16 +191,26 @@ func _enter(state: String, blend := 0.12) -> void:
 	_state = state
 	match state:
 		"run":
-			_anim.play("Run_Shoot" if _armed else "Run", blend)
-		"walk":
-			_anim.play("Walk_Shoot" if _armed else "Walk", blend)
-		"stand":
-			# Standbilder mit Abspieltempo 0 (statt pause()), damit das Überblenden
-			# aus der vorigen Animation trotzdem zu Ende läuft.
 			if _armed:
-				# Zielhaltung = erstes Bild der Schuss-Animation
-				_anim.play("Idle_Shoot", blend, 0.0)
-				_anim.seek(0.0, true)
+				_anim.play("Run_Shoot" if _aiming else "Run_Gun", blend)
+			else:
+				_anim.play("Run", blend)
+		"walk":
+			if _armed:
+				_anim.play("Walk_Shoot" if _aiming else "Walk", blend)
+			else:
+				_anim.play("Walk", blend)
+		"stand":
+			if _armed:
+				if _aiming:
+					# Zielhaltung = erstes Bild der Schuss-Animation. Standbilder mit
+					# Abspieltempo 0 (statt pause()), damit das Überblenden aus der
+					# vorigen Animation trotzdem zu Ende läuft.
+					_anim.play("Idle_Shoot", blend, 0.0)
+					_anim.seek(0.0, true)
+				else:
+					# Waffe gesenkt: normale Stand-Animation, loopt
+					_anim.play("Idle", blend)
 			else:
 				# Geiseln kauern am Boden
 				_anim.play("Duck", 0.0, 0.0)

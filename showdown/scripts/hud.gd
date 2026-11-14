@@ -133,7 +133,7 @@ func _ready() -> void:
 	_hint.offset_top = -34
 	_hint.offset_bottom = -10
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint.text = "WASD bewegen · Maus zielen · Linksklick schießen · Rechtsklick/Shift Spezial · C ducken · E Tür öffnen · F Position halten · Leertaste vorspulen · 1/2 oder Mausrad Zeitlupe"
+	_hint.text = "WASD bewegen · Maus zielen · Rechte Maustaste halten = Waffe anlegen · Linksklick schießen (nur beim Anlegen) · Leertaste = Spezialfähigkeit · C ducken · E Tür öffnen · F Position halten · 1/2 oder Mausrad Zeitlupe"
 
 	# --- Tafel in der Mitte (Fehlschlag, Ergebnis) ---
 	_panel = PanelContainer.new()

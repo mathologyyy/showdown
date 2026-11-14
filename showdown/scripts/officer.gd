@@ -3,7 +3,8 @@ extends Actor
 ## Ein SEK-Officer. Wird entweder vom Spieler gesteuert (control_tick) oder
 ## vom GameManager aus einer Aufzeichnung nachgefahren (Actor.apply_frame + apply_flags).
 ##
-## Jeder Officer hat eine Spezialfähigkeit auf der Aktionstaste:
+## Zielen: Rechte Maustaste halten legt die Waffe an (Laser, Streubogen, Schießen).
+## Jeder Officer hat eine Spezialfähigkeit auf der Aktionstaste (Leertaste):
 ##   "flash"  – wirft eine Blendgranate zum Mauszeiger
 ##   "shield" – hält, solange die Taste gedrückt ist, ein Schild vor sich
 ##   "roll"   – Hechtrolle in Laufrichtung
@@ -12,6 +13,7 @@ const ROLE_NAMES := {"flash": "Blendgranate", "shield": "Schild", "roll": "Hecht
 const FLAG_SHIELD := 1
 const FLAG_ROLL := 2
 const FLAG_CROUCH := 4
+const FLAG_AIM := 8
 ## Schild als Strecke quer vor dem Officer (für die Kugel-Berechnung im GameManager).
 const SHIELD_DIST := 0.5
 const SHIELD_HALF_WIDTH := 0.7
@@ -26,6 +28,7 @@ const SHIELD_HALF_WIDTH := 0.7
 @export var max_ammo := 12
 @export var max_grenades := 2
 @export var shield_speed_factor := 0.55  # Lauftempo mit erhobenem Schild
+@export var aim_move_speed_factor := 1.0 # Lauftempo mit angelegter Waffe
 @export var crouch_speed_factor := 0.7   # Lauftempo geduckt
 @export var roll_speed_factor := 2.0     # Tempo der Rolle als Vielfaches von move_speed
 @export var roll_time := 0.42            # Dauer der Rolle
@@ -38,6 +41,7 @@ var grenades := 0
 ## 0..1, lädt beim Stillstehen auf, Bewegung setzt sie zurück.
 var stability := 0.0
 var shield_up := false
+var aiming := false                       # Waffe angelegt
 var rolling := false
 var crouched := false
 var ram: Node3D                          # Rammbock (nur im Intro sichtbar)
@@ -54,6 +58,7 @@ func apply_tweaks() -> void:
 	move_speed = Tweaks.num("player", "move_speed", 3.2)
 	crouch_speed_factor = Tweaks.num("player", "crouch_speed_factor", 0.7)
 	shield_speed_factor = Tweaks.num("player", "shield_speed_factor", 0.55)
+	aim_move_speed_factor = Tweaks.num("player", "aim_move_speed_factor", 1.0)
 	aim_follow = Tweaks.num("player", "aim_turn_speed", 6.0)
 	stabilize_time = Tweaks.num("player", "aim_steady_time", 0.6)
 	spread_max_deg = Tweaks.num("player", "spread_max_deg", 7.0)
@@ -73,9 +78,10 @@ func set_role(p_role: String) -> void:
 		_build_shield()
 
 
-## Einen Simulations-Tick lang steuern. action_held/action_pressed: Aktionstaste.
+## Einen Simulations-Tick lang steuern. aim_held: rechte Maustaste gehalten (Waffe
+## anlegen). action_held/action_pressed: Aktionstaste (Leertaste, Spezialfähigkeit).
 ## Liefert true, wenn in diesem Tick eine Blendgranate geworfen wird.
-func control_tick(move: Vector2, aim_point: Vector3, action_held: bool, action_pressed: bool,
+func control_tick(move: Vector2, aim_point: Vector3, aim_held: bool, action_held: bool, action_pressed: bool,
 		crouch_toggle: bool, dt: float) -> bool:
 	if crouch_toggle:
 		set_crouched(not crouched)
@@ -101,6 +107,9 @@ func control_tick(move: Vector2, aim_point: Vector3, action_held: bool, action_p
 				_roll_dir = Vector3(move.x, 0.0, move.y) if move.length_squared() > 0.001 else forward()
 				_set_rolling(true)
 
+	# Waffe anlegen: nur mit gehaltener Ziel-Taste, nie mit erhobenem Schild oder während der Rolle
+	_set_aiming(aim_held and not shield_up and not rolling)
+
 	if _roll_left > 0.0:
 		# Rolle: fester Satz in Startrichtung, nicht lenkbar
 		move_step(_roll_dir * move_speed * roll_speed_factor * dt)
@@ -112,12 +121,15 @@ func control_tick(move: Vector2, aim_point: Vector3, action_held: bool, action_p
 		return false
 
 	var factor := shield_speed_factor if shield_up else 1.0
+	if aiming:
+		factor *= aim_move_speed_factor
 	if crouched:
 		factor *= crouch_speed_factor
 	move_step(Vector3(move.x, 0.0, move.y) * move_speed * factor * dt)
 
 	_recover = maxf(0.0, _recover - dt)
-	if move.length_squared() > 0.001 or shield_up or _recover > 0.0:
+	# Stabilität lädt nur mit angelegter Waffe und im Stillstand auf
+	if not aiming or move.length_squared() > 0.001 or shield_up or _recover > 0.0:
 		stability = 0.0
 	else:
 		stability = minf(1.0, stability + dt / stabilize_time)
@@ -125,7 +137,7 @@ func control_tick(move: Vector2, aim_point: Vector3, action_held: bool, action_p
 
 
 func can_fire() -> bool:
-	return ammo > 0 and not shield_up and not rolling
+	return ammo > 0 and aiming and not shield_up and not rolling
 
 
 ## 0..1: wie weit die Rolle wieder bereit ist.
@@ -155,11 +167,12 @@ func shield_side() -> Vector3:
 
 
 func flags() -> int:
-	return (FLAG_SHIELD if shield_up else 0) | (FLAG_ROLL if rolling else 0) \
-			| (FLAG_CROUCH if crouched else 0)
+	return (FLAG_AIM if aiming else 0) | (FLAG_SHIELD if shield_up else 0) \
+			| (FLAG_ROLL if rolling else 0) | (FLAG_CROUCH if crouched else 0)
 
 
 func apply_flags(f: int) -> void:
+	_set_aiming(f & FLAG_AIM != 0)
 	_set_shield(f & FLAG_SHIELD != 0)
 	_set_rolling(f & FLAG_ROLL != 0)
 	set_crouched(f & FLAG_CROUCH != 0)
@@ -190,6 +203,11 @@ func build_ram() -> void:
 	ram.visible = false
 
 
+func _set_aiming(on: bool) -> void:
+	aiming = on
+	model.set_aiming(on)
+
+
 func _set_shield(on: bool) -> void:
 	shield_up = on
 	if _shield_mesh:
@@ -204,6 +222,7 @@ func _set_rolling(on: bool) -> void:
 func set_alive(value: bool, instant := false) -> void:
 	super(value, instant)
 	if not value:
+		_set_aiming(false)
 		_set_shield(false)
 		rolling = false
 
@@ -252,6 +271,7 @@ func set_state(s: Dictionary) -> void:
 	_roll_left = 0.0
 	_roll_cd = 0.0
 	_recover = 0.0
+	_set_aiming(false)
 	_set_shield(false)
 	_set_rolling(false)
 	set_crouched(s.crouched and alive)
