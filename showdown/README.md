@@ -54,7 +54,9 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
   (umschaltbar in `gameplay_tweaks.cfg`).
 - Ab dem zweiten Zug läuft das bisher Aufgezeichnete zuerst in **Echtzeit** ab. Kurz bevor
   der Moment erreicht ist, an dem der vorige Zug endete, bremst die Zeit auf Zeitlupe und
-  du übernimmst den nächsten Officer. Die Züge bauen also zeitlich aufeinander auf.
+  du übernimmst den nächsten Officer. Die Züge bauen also zeitlich aufeinander auf. Im Vorlauf
+  zählt oben mittig ein Timer (**„ÜBERNAHME IN x s"** mit Fortschrittsbalken) in echten
+  Sekunden bis zur Übernahme herunter.
 - Vor jeder Übernahme läuft ein Countdown **3 – 2 – 1 – GO GO GO**.
 - Vorherige Officer fahren ihre Aufzeichnung nach; ist sie zu Ende, halten sie Position.
   Ihre Schüsse werden jetzt echte Kugeln.

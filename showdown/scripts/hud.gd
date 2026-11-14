@@ -10,6 +10,8 @@ extends CanvasLayer
 ## Alles per Code aufgebaut.
 
 const BAR_HEIGHT := 70.0
+const TAKEOVER_BAR_W := 320.0
+const TAKEOVER_BAR_H := 8.0
 
 ## Zuletzt gezeigte Texte (praktisch für Tests und Debugging).
 var card_title := ""
@@ -48,6 +50,13 @@ var _rewind_k := 0.0              # Ein-/Ausblend-Faktor des Effekts (0..1)
 var _rewind_time := 0.0           # echte Sekunden seit Start, fürs Blinken
 ## öffentlich für Tests: true, solange der Rückspul-Effekt angezeigt wird
 var rewind_shown := false
+
+var _takeover: VBoxContainer       # Übernahme-Timer (Label + Fortschrittsbalken), oben mittig
+var _takeover_label: Label
+var _takeover_bar_bg: ColorRect
+var _takeover_fill: ColorRect
+## öffentlich für Tests: zuletzt gesetzte Restzeit in s (< 0 = Timer ausgeblendet)
+var takeover_left := -1.0
 
 
 func _ready() -> void:
@@ -97,6 +106,36 @@ func _ready() -> void:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.custom_minimum_size.x = 150
 		_chips.append({"panel": chip, "label": l})
+
+	# --- Übernahme-Timer: Vorlauf-Countdown in echten Sekunden ---
+	# Oben mittig zwischen Abschnittsleiste (bis ca. y=58) und Titelkarte (ab y=120),
+	# kollidiert weder mit _title/_sub noch mit dem zentrierten _big
+	_takeover = VBoxContainer.new()
+	_takeover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_takeover)
+	_takeover.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_takeover.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_takeover.offset_top = 62
+	_takeover.offset_left = -TAKEOVER_BAR_W * 0.5
+	_takeover.offset_right = TAKEOVER_BAR_W * 0.5
+	_takeover.offset_bottom = 108
+	_takeover.add_theme_constant_override("separation", 4)
+	_takeover_label = _label(_takeover, 26, Color.WHITE)
+	_takeover_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_takeover_bar_bg = ColorRect.new()
+	_takeover_bar_bg.color = Color(0.05, 0.06, 0.08, 0.8)
+	_takeover_bar_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_takeover_bar_bg.custom_minimum_size = Vector2(TAKEOVER_BAR_W, TAKEOVER_BAR_H)
+	_takeover.add_child(_takeover_bar_bg)
+	_takeover_fill = ColorRect.new()
+	_takeover_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_takeover_bar_bg.add_child(_takeover_fill)
+	_takeover_fill.anchor_right = 0.0
+	_takeover_fill.offset_left = 0.0
+	_takeover_fill.offset_top = 0.0
+	_takeover_fill.offset_bottom = TAKEOVER_BAR_H
+	_takeover_fill.offset_right = 0.0
+	_takeover.visible = false
 
 	# --- Titelkarte ---
 	_title = _label(root, 104, Color.WHITE)
@@ -308,6 +347,21 @@ func set_freeze(on: bool) -> void:
 func set_rewind(on: bool) -> void:
 	_rewind_on = on
 	rewind_shown = on
+
+
+## Übernahme-Timer im Vorlauf: seconds_left = echte Sekunden bis zur Kontrolle,
+## total = Gesamtdauer des Vorlaufs, color = Füllfarbe des Balkens.
+## seconds_left < 0 blendet das Element aus.
+func set_takeover_timer(seconds_left: float, total: float, color: Color) -> void:
+	takeover_left = seconds_left
+	if seconds_left < 0.0:
+		_takeover.visible = false
+		return
+	_takeover.visible = true
+	_takeover_label.text = "ÜBERNAHME IN %s s" % ("%.1f" % seconds_left).replace(".", ",")
+	var frac := clampf(1.0 - seconds_left / maxf(total, 0.001), 0.0, 1.0)
+	_takeover_fill.color = color
+	_takeover_fill.offset_right = TAKEOVER_BAR_W * frac
 
 
 func set_hint_visible(on: bool) -> void:

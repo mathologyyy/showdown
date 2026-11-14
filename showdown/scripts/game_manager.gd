@@ -137,6 +137,7 @@ var _track: RoundSystem.Track        # Aufzeichnung des laufenden Zugs
 var _segment: RoundSystem.Segment    # Welt-Aufzeichnung der laufenden Auswertung
 var _resolve_end := 0
 var _takeover_tick := 0              # ab diesem Tick steuert der Spieler
+var _lead_total := 0.0               # Vorlauf + Countdown in echten Sekunden (Übernahme-Timer)
 var _taken := false
 var _fire_req := false
 var _hold_req := false
@@ -393,6 +394,9 @@ func _start_turn() -> void:
 	# Während des Countdowns vergeht (wegen des Abbremsens) so viel Spielzeit:
 	var ramp_ticks := int(COUNT_TOTAL * (1.0 + TimeControl.rest_scale()) * 0.5 * TimeControl.SIM_HZ)
 	_count_start = maxi(0, _takeover_tick - ramp_ticks)
+	# Der Vorlauf läuft mit override_scale 1.0 (Echtzeit), der Countdown dauert
+	# COUNT_TOTAL echte Sekunden – zusammen die Gesamtdauer bis zur Übernahme
+	_lead_total = float(_count_start) / TimeControl.SIM_HZ + COUNT_TOTAL
 	_hud.set_panel_text("")
 	_hud.set_freeze(false)
 	_hud.hide_card()
@@ -1544,6 +1548,16 @@ func _update_hud(real_dt: float) -> void:
 	elif phase == Phase.REWIND:
 		tempo = "◀◀ × %.0f" % (_rw_rate / TimeControl.SIM_HZ)
 	_hud.set_clock("DURCHLAUF %d   ·   %.2f s\n%s" % [rounds.pass_index, seconds, tempo])
+
+	# Übernahme-Timer: während Vorlauf und Countdown, bis der Spieler die Kontrolle hat
+	if phase == Phase.PLAYING and not _taken:
+		var left := _count_left
+		if _count_left < 0.0:
+			# Countdown läuft noch nicht: Vorlauf in Echtzeit (override_scale 1.0) + Countdown
+			left = float(maxi(0, _count_start - tick)) / TimeControl.SIM_HZ + COUNT_TOTAL
+		_hud.set_takeover_timer(left, _lead_total, active.color)
+	else:
+		_hud.set_takeover_timer(-1.0, 1.0, Color.WHITE)
 
 
 func _special_text(o: Officer) -> String:
