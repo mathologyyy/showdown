@@ -1,6 +1,6 @@
 # Showdown – "Go Go Go" Taktik-Prototyp
 
-Top-down 3D-Taktikspiel in Zeitlupe: Ein 3-köpfiges SEK stürmt eine Wohnung.
+Top-down 3D-Taktikspiel mit Zeitlupe beim Zielen: Ein 3-köpfiges SEK stürmt eine Wohnung.
 Godot **4.7** (entwickelt und getestet mit 4.7.2 stable), reines GDScript.
 
 ## Starten
@@ -15,14 +15,14 @@ Oder direkt im Terminal: `godot --path .`
 | Eingabe | Wirkung |
 |---|---|
 | W A S D | Officer bewegen |
-| Maus | Zielen (die Waffe folgt dem Mauszeiger verzögert) |
-| Linksklick | Schießen (beendet den Zug) |
-| Rechtsklick / Shift | Aktionstaste: Spezialfähigkeit des Officers (Granate und Schild beenden den Zug, die Rolle nicht) |
+| Maus | Blickrichtung (folgt dem Mauszeiger verzögert) |
+| Rechte Maustaste (halten) | Waffe anlegen: erst dann gibt es Laser, Streubogen und Schuss; währenddessen läuft die Zeitlupe |
+| Linksklick | Schießen, nur mit angelegter Waffe (beendet den Zug) |
+| Leertaste | Aktionstaste: Spezialfähigkeit des Officers (Granate und Schild beenden den Zug, die Rolle nicht) |
 | C / Strg | Ducken / Aufstehen (umschalten) |
 | E | Tür öffnen (in Reichweite erscheint ein „E“ an der Tür) |
 | F / Enter | Position halten (Zug ohne Schuss beenden) |
-| Leertaste (halten) | Vorspulen (5-fach) |
-| 1 / 2 oder Mausrad | Zeitlupe langsamer / schneller (3–30 %) |
+| 1 / 2 oder Mausrad | Zeitlupe langsamer / schneller |
 | R | nach Fehlschlag: Durchlauf wiederholen · im Ergebnis: Replay erneut |
 | N | neue Mission (nach Fehlschlag oder Ergebnis) |
 | Esc | Beenden |
@@ -33,7 +33,7 @@ Oder direkt im Terminal: `godot --path .`
 |---|---|
 | 1 · vorn | Startet geduckt. **Blendgranate** (2 Stück): fliegt im Bogen zum Mauszeiger (höchstens 8 m), springt nach dem Aufkommen weiter, prallt an Wänden und Möbeln ab und zündet 0,6 Spielsekunden nach dem ersten Aufkommen. Der Wurf beendet den Zug. Blendet Gegner im Umkreis von 4,5 m mit Sichtlinie zur Granate für 2,5 Spielsekunden: sie sehen, zielen und schießen nicht. Das Team ist immun. |
 | 2 · Mitte | **Schild**: das Heben beendet den Zug, danach bleibt es für den Rest des Durchlaufs oben. Es fängt Kugeln von vorn ab (etwa 110°) und deckt Kollegen dahinter. Mit erhobenem Schild läuft er langsamer und kann nicht schießen. |
-| 3 · hinten | Rammt im Intro die Eingangstür auf. **Hechtrolle**: gut 3 m schneller Satz in Laufrichtung, nicht lenkbar, weiterhin treffbar. Danach kurz maximale Streuung, 1,5 Spielsekunden Abklingzeit. |
+| 3 · hinten | Rammt im Intro die Eingangstür auf. **Hechtrolle**: schneller Satz in Laufrichtung (doppeltes Lauftempo), nicht lenkbar, weiterhin treffbar. Danach kurz maximale Streuung, 1,5 Spielsekunden Abklingzeit. |
 
 **Ducken:** Geduckt ist man 30 % langsamer. Stehende Kollegen schießen über Geduckte hinweg.
 Hinter den hellbraunen **Kisten** ist ein Geduckter aus dieser Richtung nicht zu treffen;
@@ -48,6 +48,10 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
   nächsten Zug. Gegnerschüsse beenden den Zug nicht mehr: ihre Kugeln fliegen sofort.
   (Umschaltbar über drei Konstanten ganz oben in `scripts/game_manager.gd`.)
 - Beim eigenen Schuss fährt die Kamera 2 Sekunden lang nah an den Schützen.
+- Nach jedem Zug wird sichtbar **zurückgespult**: der Zug läuft rückwärts bis zum Checkpoint,
+  mit ◀◀-Symbol, VHS-Verzerrung und entsättigtem Bild.
+- Das normale Spiel läuft in **Echtzeit**; die Zeitlupe gilt nur, solange die Waffe angelegt ist
+  (umschaltbar in `gameplay_tweaks.cfg`).
 - Ab dem zweiten Zug läuft das bisher Aufgezeichnete zuerst in **Echtzeit** ab. Kurz bevor
   der Moment erreicht ist, an dem der vorige Zug endete, bremst die Zeit auf Zeitlupe und
   du übernimmst den nächsten Officer. Die Züge bauen also zeitlich aufeinander auf.
@@ -62,6 +66,8 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 - **Doppeltüren** (gut 2 m breit) sind zu Beginn geschlossen; den Eingang rammt Officer 3
   im Intro auf. Die übrigen sind geschlossen und blocken Sicht, Kugeln und Granaten. Aufstoßen
   hört man 6 m weit: Gegner in der Nähe drehen sich zur Tür.
+- **Gegner** tragen die Waffe gesenkt und ziehen sie erst, wenn sie einen Officer sehen oder
+  etwas hören (Schuss, Granate, Tür). Erst mit gezogener Waffe zielen und schießen sie.
 - **Gegner reagieren:** Beim ersten Alarm stellt sich ein Gegner hinter eine nahe Geisel und
   bedroht sie. Über der Geisel läuft eine Frist (10 Spielsekunden); ist sie um, erschießt er
   sie. Blenden hält die Frist an. Nach einem eigenen Schuss oder einem knappen Fehlschuss
@@ -77,9 +83,10 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 
 - Leiste oben: aktueller Abschnitt und Status der vier Officer (aktiv, fertig, wartet, Ausfall).
 - Aktiver Officer: pulsierender Bodenring und Pfeil über dem Kopf.
-- Weißer Bogen am Laser-Ende: Streuung. Schrumpft beim Stillstehen zu einem Punkt.
+- Laser und weißer Streubogen erscheinen nur mit angelegter Waffe. Der Bogen schrumpft beim
+  Stillstehen zu einem Punkt.
 - Roter Laser: Team. Orange: Gegner. Der Gegner-Laser erscheint erst, wenn der Gegner
-  einen Officer gesichtet hat (dann auch aus dem Dunkeln).
+  einen Officer gesichtet und die Waffe gezogen hat (dann auch aus dem Dunkeln).
 - Ring mit „!“ über dem Gegner: füllt sich bis zu seinem nächsten Schuss.
 - Kreisende Sterne über dem Gegner: geblendet.
 - Officer, die gerade nicht gespielt werden, sind abgedunkelt.
@@ -95,7 +102,9 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 | `scenes/main.tscn` | Hauptszene (ein Node mit `game_manager.gd`, alles Weitere entsteht per Code) |
 | `scripts/game_manager.gd` | Ablauf/Phasen, Simulations-Tick, Kugeln, Checkpoints, Eingabe, Kamera, Laser |
 | `scripts/round_system.gd` | Daten des Rundensystems: Durchlauf, Züge, Aufzeichnungen, Replay-Timeline |
-| `scripts/time_control.gd` | Autoload `TimeControl`: zentrale Zeitlupe über die Tick-Rate |
+| `gameplay_tweaks.cfg` | Alle Gameplay-Werte als Textdatei (siehe Stellschrauben) |
+| `scripts/tweaks.gd` | Autoload `Tweaks`: liest `gameplay_tweaks.cfg` |
+| `scripts/time_control.gd` | Autoload `TimeControl`: Spieltempo und Zeitlupe über die Tick-Rate |
 | `scripts/actor.gd` | Basisklasse aller Figuren (Kollision, Blickrichtung, Tod, Zustand); Geiseln nutzen sie direkt |
 | `scripts/character_model.gd` | Animiertes 3D-Modell: wählt Lauf-, Ziel-, Schuss- und Sterbe-Animation |
 | `scripts/officer.gd` | Spielersteuerung, träges Zielen, Aim-Stabilität/Streuung, Spezialfähigkeiten |
@@ -108,6 +117,7 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 | `scripts/level.gd` | Test-Wohnung als Datentabellen (Wände, Möbel, Startpositionen) |
 | `scripts/hud.gd` | HUD: Abschnittsleiste, Titelkarten, Kinobalken, Ergebnis-Tafel |
 | `shaders/fog.gdshader` | Abdunkelung außerhalb der Sichtkegel |
+| `shaders/rewind.gdshader` | VHS-Effekt beim Zurückspulen |
 | `assets/characters/*.gltf` | Figuren mit Animationen |
 | `assets/sounds/*.wav` | Schüsse, Blendgranate, Tür |
 
@@ -124,9 +134,18 @@ Countdown, Slowdown, Abpraller, Einschlag und Freeze werden im Code erzeugt.
 
 ## Stellschrauben
 
-- Zeitlupe, Vorspul-Faktor: `scripts/time_control.gd`
-- Kugeltempo, Dauer des Standbilds, Countdown, Granate (Wurfweite, Radius, Blenddauer), Zahl der Abpraller, Tür-Reichweite und -Lautstärke, Sterne-Ziele, Kamerawinkel: Konstanten oben in `scripts/game_manager.gd`
+Die wichtigsten Gameplay-Werte stehen in **`gameplay_tweaks.cfg`** (einfache Textdatei, jeder Wert
+mit Kommentar). Sie wird beim Start und bei jeder neuen Mission (**N**) neu gelesen.
+
+| Sektion | Inhalt |
+|---|---|
+| `[tempo]` | Normales Tempo, Slowdown-Tempo, Schalter „Slowdown nur beim Zielen“, Übergangszeit, Rückspulgeschwindigkeit (mit Mindest- und Höchstdauer), Tempo der Auswertung |
+| `[player]` | Lauftempo (auch geduckt, mit Schild, mit angelegter Waffe), Ziel-Rotation, Aim-Stabilität, Streuung, Munition, Granaten, Hechtrolle |
+| `[enemy]` | Reaktionszeit, Ziel-Tempo, Ziel-Genauigkeit, Zeit zum Ziehen der Waffe, Feuerrate, Sicht- und Hörweite, Lauftempo, Deckung, Geisel-Frist |
+| `[weapons]` | Kugeltempo, Granate (Wurfweite, Tempo, Zünder, Blendradius, Blenddauer), Zahl der Abpraller |
+
+Weiterhin im Code:
+
+- Dauer des Standbilds, Countdown, Tür-Reichweite und -Lautstärke, Sterne-Ziele, Kamerawinkel: Konstanten oben in `scripts/game_manager.gd`
 - Sichtkegel (Winkel, Reichweite, Nahbereich): `@export` in `scripts/vision.gd`
-- Tempo, Ziel-Trägheit, Streuung, Munition, Granaten, Schild-Tempo, Rolle: `@export` in `scripts/officer.gd`
-- Reaktionszeit, Sichtweite, Feuerrate, Deckung, Geisel-Frist der Gegner: `@export` in `scripts/enemy.gd`
 - Grundriss, Türen, Metall-Objekte, Squad-Rollen, Gegner-Startplätze, Geiseln: Tabellen oben in `scripts/level.gd`
