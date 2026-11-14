@@ -66,6 +66,22 @@ var _cover_cd := 0.0
 var _rng := RandomNumberGenerator.new()
 
 
+## Übernimmt alle Gameplay-Werte des Gegners aus den Tweaks (Sektion "enemy").
+func apply_tweaks() -> void:
+	reaction_time = Tweaks.num("enemy", "reaction_time", 0.7)
+	fire_cooldown = Tweaks.num("enemy", "fire_cooldown", 1.0)
+	turn_speed_deg = Tweaks.num("enemy", "aim_turn_speed_deg", 220.0)
+	spread_deg = Tweaks.num("enemy", "aim_spread_deg", 2.0)
+	view_range = Tweaks.num("enemy", "view_range", 10.0)
+	fov_half_deg = Tweaks.num("enemy", "fov_half_deg", 50.0)
+	hearing_range = Tweaks.num("enemy", "hearing_range", 14.0)
+	patrol_speed = Tweaks.num("enemy", "patrol_speed", 0.6)
+	run_speed = Tweaks.num("enemy", "run_speed", 2.6)
+	cover_wait = Tweaks.num("enemy", "cover_wait", 1.0)
+	cover_cooldown = Tweaks.num("enemy", "cover_cooldown", 4.0)
+	threat_time = Tweaks.num("enemy", "threat_time", 10.0)
+
+
 func sim_tick(dt: float) -> void:
 	_cooldown = maxf(0.0, _cooldown - dt)
 	_cover_cd = maxf(0.0, _cover_cd - dt)

@@ -49,6 +49,23 @@ var _roll_dir := Vector3.ZERO
 var _shield_mesh: Node3D
 
 
+## Übernimmt alle Gameplay-Werte des Officers aus den Tweaks (Sektion "player").
+func apply_tweaks() -> void:
+	move_speed = Tweaks.num("player", "move_speed", 3.2)
+	crouch_speed_factor = Tweaks.num("player", "crouch_speed_factor", 0.7)
+	shield_speed_factor = Tweaks.num("player", "shield_speed_factor", 0.55)
+	aim_follow = Tweaks.num("player", "aim_turn_speed", 6.0)
+	stabilize_time = Tweaks.num("player", "aim_steady_time", 0.6)
+	spread_max_deg = Tweaks.num("player", "spread_max_deg", 7.0)
+	spread_min_deg = Tweaks.num("player", "spread_min_deg", 0.4)
+	max_ammo = Tweaks.whole("player", "max_ammo", 12)
+	max_grenades = Tweaks.whole("player", "max_grenades", 2)
+	roll_speed = Tweaks.num("player", "roll_speed", 7.5)
+	roll_time = Tweaks.num("player", "roll_time", 0.42)
+	roll_cooldown = Tweaks.num("player", "roll_cooldown", 1.5)
+	roll_recover = Tweaks.num("player", "roll_recover", 0.4)
+
+
 func set_role(p_role: String) -> void:
 	role = p_role
 	grenades = max_grenades if role == "flash" else 0

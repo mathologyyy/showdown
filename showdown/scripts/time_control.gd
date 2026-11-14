@@ -38,3 +38,9 @@ func current_scale() -> float:
 
 func adjust(step: float) -> void:
 	slowmo_scale = clampf(slowmo_scale + step, SLOWMO_MIN, SLOWMO_MAX)
+
+
+## Übernimmt die Zeitlupe-Geschwindigkeit aus den Tweaks (Sektion "tempo"),
+## geklemmt auf SLOWMO_MIN..SLOWMO_MAX.
+func apply_tweaks() -> void:
+	slowmo_scale = clampf(Tweaks.num("tempo", "slowdown_speed", 0.10), SLOWMO_MIN, SLOWMO_MAX)

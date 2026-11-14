@@ -17,6 +17,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+Tweaks="*res://scripts/tweaks.gd"
 TimeControl="*res://scripts/time_control.gd"
 
 [display]

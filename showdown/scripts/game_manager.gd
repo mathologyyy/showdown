@@ -40,19 +40,19 @@ const COL_FREEZE := Color(0.6, 0.8, 1.0)
 const COL_DANGER := Color(1.0, 0.35, 0.25)
 
 const BREAK_SECONDS := 1.8          # echte Sekunden Standbild nach einem Schuss
-const BULLET_SPEED := 40.0          # m pro Spielsekunde (bei 10 % Zeitlupe: 4 m/s auf dem Schirm)
+var BULLET_SPEED: float = 40.0      # m pro Spielsekunde (bei 10 % Zeitlupe: 4 m/s auf dem Schirm); aus Tweaks "weapons"
 const SHOT_RANGE := 60.0
 const RESOLVE_TAIL_TICKS := 72      # Auswertung läuft 0,15 s über die längste Aufzeichnung hinaus
-const RESOLVE_TIME_SCALE := 0.6
+var RESOLVE_TIME_SCALE: float = 0.6 # Tempo der Auswertung; aus Tweaks "tempo"
 ## Übernahme so viele Ticks VOR dem Ende des vorigen Zugs (0,25 Spielsekunden).
 const TAKEOVER_LEAD_TICKS := 120
 ## Countdown vor jeder Übernahme: 3, 2, 1 mit je so vielen echten Sekunden. Währenddessen
 ## bremst die Zeit von Echtzeit auf Zeitlupe.
 const COUNT_STEP := 0.5
 const COUNT_TOTAL := COUNT_STEP * 3.0
-const GRENADE_RANGE := 8.0          # maximale Wurfweite (m)
-const GRENADE_SPEED := 10.0         # m pro Spielsekunde
-const GRENADE_FUSE := 0.6           # Spielsekunden zwischen erstem Aufkommen und Zündung
+var GRENADE_RANGE: float = 8.0      # maximale Wurfweite (m); aus Tweaks "weapons"
+var GRENADE_SPEED: float = 10.0     # m pro Spielsekunde; aus Tweaks "weapons"
+var GRENADE_FUSE: float = 0.6       # Spielsekunden zwischen erstem Aufkommen und Zündung; aus Tweaks "weapons"
 const GRENADE_GRAVITY := 12.0
 const GRENADE_BOUNCE := 0.4         # so viel Höhe bleibt nach einem Aufprall
 const GRENADE_KEEP := 0.5           # so viel Tempo bleibt nach Boden- oder Wandkontakt
@@ -61,9 +61,9 @@ const CUT_ZOOM := 0.42              # Kameraabstand in der Nahaufnahme (Anteil d
 const CUT_BULLET_METERS := 1.0      # so weit fliegt die Kugel in der Nahaufnahme
 const INTRO_SECONDS := 2.4          # Rammbock-Intro
 const CROUCH_COVER_REACH := 1.6     # so nah muss die Kiste vor dem Geduckten stehen
-const FLASH_RADIUS := 4.5           # Blendradius (nur mit Sichtlinie zur Granate)
-const FLASH_SECONDS := 2.5          # so lange sind Gegner geblendet (Spielzeit)
-const MAX_BOUNCES := 2              # so oft prallt eine Kugel höchstens an Metall ab
+var FLASH_RADIUS: float = 4.5       # Blendradius (nur mit Sichtlinie zur Granate); aus Tweaks "weapons"
+var FLASH_SECONDS: float = 2.5      # so lange sind Gegner geblendet (Spielzeit); aus Tweaks "weapons"
+var MAX_BOUNCES: int = 2            # so oft prallt eine Kugel höchstens an Metall ab; aus Tweaks "weapons"
 const DOOR_REACH := 1.7             # so nah muss ein Officer an der Tür stehen, um sie zu öffnen
 const DOOR_NOISE := 6.0             # so weit hört man eine aufgestoßene Tür
 const NEAR_MISS := 0.9              # fliegt eine Team-Kugel so knapp vorbei, geht der Gegner in Deckung
@@ -141,6 +141,17 @@ var _rp_elapsed := 0
 
 
 func _ready() -> void:
+	# Gameplay-Werte aus der editierbaren Datei laden
+	Tweaks.reload()
+	TimeControl.apply_tweaks()
+	BULLET_SPEED = Tweaks.num("weapons", "bullet_speed", 40.0)
+	GRENADE_RANGE = Tweaks.num("weapons", "grenade_range", 8.0)
+	GRENADE_SPEED = Tweaks.num("weapons", "grenade_speed", 10.0)
+	GRENADE_FUSE = Tweaks.num("weapons", "grenade_fuse", 0.6)
+	FLASH_RADIUS = Tweaks.num("weapons", "flash_radius", 4.5)
+	FLASH_SECONDS = Tweaks.num("weapons", "flash_seconds", 2.5)
+	MAX_BOUNCES = Tweaks.whole("weapons", "max_bounces", 2)
+	RESOLVE_TIME_SCALE = Tweaks.num("tempo", "resolve_speed", 0.6)
 	_rng.randomize()
 	_level = Level.new()
 	add_child(_level)
@@ -258,6 +269,7 @@ func _spawn_actors() -> void:
 		o.setup(i, "officer", OFFICER_COLORS[i], Actor.LAYER_OFFICER, str(i + 1))
 		o.global_position = Level.OFFICER_SPAWNS[i]
 		o.set_yaw(PI)
+		o.apply_tweaks()
 		o.ammo = o.max_ammo
 		o.set_role(Level.OFFICER_ROLES[i])
 		if i == 0:
@@ -278,6 +290,7 @@ func _spawn_actors() -> void:
 		e.game = self
 		add_child(e)
 		e.setup(i, "enemy", ENEMY_COLOR, Actor.LAYER_ENEMY)
+		e.apply_tweaks()
 		e.global_position = def.pos
 		e.set_yaw(e.yaw_to(def.look))
 		e.home_yaw = e.yaw
