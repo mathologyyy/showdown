@@ -2,7 +2,7 @@ extends Node3D
 ## GameManager: baut die Szene auf und steuert den gesamten Ablauf.
 ##
 ## Ablauf eines Durchlaufs:
-##   Checkpoint (T0) ─► Zug Officer 1 ─► Freeze ─► Reset auf T0 ─► Zug Officer 2 ─► …
+##   Checkpoint (T0) ─► Zug Officer 1 ─► Freeze ─► Zurückspulen ─► Reset auf T0 ─► Zug Officer 2 ─► …
 ##   … ─► Auswertung (alle Aufzeichnungen laufen gemeinsam durch) ─► neuer Checkpoint
 ##
 ## Ab dem zweiten Zug läuft das bisher Aufgezeichnete zuerst in ECHTZEIT ab. Kurz vor
@@ -20,7 +20,7 @@ extends Node3D
 ## Die Simulation läuft ausschließlich in _physics_process mit festem Zeitschritt
 ## (deterministisch, siehe time_control.gd), alles Sichtbare in _process.
 
-enum Phase { PLAYING, BREAK, RESOLVE, FAILED, FINAL_REPLAY, RESULTS, INTRO }
+enum Phase { PLAYING, BREAK, RESOLVE, FAILED, FINAL_REPLAY, RESULTS, INTRO, REWIND }
 
 ## Was einen Zug beendet (zum Ausprobieren umschaltbar):
 const ENEMY_SHOT_ENDS_TURN := false   # Gegnerschüsse frieren nicht mehr ein, die Kugel fliegt sofort
@@ -45,6 +45,12 @@ var BULLET_SPEED: float = 40.0      # m pro Spielsekunde (bei 10 % Zeitlupe: 4 m
 const SHOT_RANGE := 60.0
 const RESOLVE_TAIL_TICKS := 72      # Auswertung läuft 0,15 s über die längste Aufzeichnung hinaus
 var RESOLVE_TIME_SCALE: float = 0.6 # Tempo der Auswertung; aus Tweaks "tempo"
+var REWIND_SPEED: float = 4.0        # Rückspultempo als Vielfaches der Echtzeit; aus Tweaks "tempo"
+var REWIND_MAX_SECONDS: float = 3.0  # Obergrenze fürs Rückspulen in echten Sekunden; aus Tweaks "tempo"
+var _rw_tracks: Array = []           # Welt-Aufzeichnung des laufenden Zugs fürs Rückspulen: pro Figur PackedFloat32Array (x, z, yaw, alive, flags)
+var _rw_doors: Array = []            # in diesem Zug geöffnete Türen: [{tick, door}]
+var _rw_pos := 0.0                   # aktuelle Rückspul-Position in Ticks (läuft gegen 0)
+var _rw_rate := 0.0                  # Ticks pro echter Sekunde
 ## Übernahme so viele Ticks VOR dem Ende des vorigen Zugs (0,25 Spielsekunden).
 const TAKEOVER_LEAD_TICKS := 120
 ## Countdown vor jeder Übernahme: 3, 2, 1 mit je so vielen echten Sekunden. Währenddessen
@@ -154,6 +160,8 @@ func _ready() -> void:
 	FLASH_SECONDS = Tweaks.num("weapons", "flash_seconds", 2.5)
 	MAX_BOUNCES = Tweaks.whole("weapons", "max_bounces", 2)
 	RESOLVE_TIME_SCALE = Tweaks.num("tempo", "resolve_speed", 0.6)
+	REWIND_SPEED = Tweaks.num("tempo", "rewind_speed", 4.0)
+	REWIND_MAX_SECONDS = Tweaks.num("tempo", "rewind_max_seconds", 3.0)
 	_rng.randomize()
 	_level = Level.new()
 	add_child(_level)
@@ -346,6 +354,11 @@ func _restore(cp: Dictionary) -> void:
 	_bullets.clear()
 	_grenades.clear()
 	_fx.clear()
+	# Welt-Aufzeichnung des nächsten Zugs fürs Rückspulen neu beginnen
+	_rw_tracks = []
+	for a in _all:
+		_rw_tracks.append(PackedFloat32Array())
+	_rw_doors = []
 
 
 func _alive_order() -> Array[int]:
@@ -487,6 +500,58 @@ func _next_turn() -> void:
 		_start_turn()
 	else:
 		_start_resolve()
+
+
+## Nach dem Freeze: der gerade gespielte Zug läuft sichtbar rückwärts bis Tick 0.
+## Danach geht es weiter wie bisher (nächster Zug bzw. Auswertung ab Checkpoint).
+func _start_rewind() -> void:
+	var n := 0
+	if not _rw_tracks.is_empty():
+		n = _rw_tracks[0].size() / RoundSystem.Segment.STRIDE
+	if n < 2 or REWIND_SPEED <= 0.0:
+		_next_turn()
+		return
+	phase = Phase.REWIND
+	_rw_pos = float(n - 1)
+	_rw_rate = maxf(REWIND_SPEED * TimeControl.SIM_HZ, n / maxf(REWIND_MAX_SECONDS, 0.1))
+	_bullets.clear()
+	_grenades.clear()
+	_fx.clear()
+	_hud.set_freeze(false)
+	_hud.set_letterbox(true)
+	_hud.show_card("ZURÜCKSPULEN", "Zurück zum Start des Durchlaufs", COL_REALTIME, 0.0)
+	_snd.play("freeze", 1.6)
+
+
+## Rückspul-Schritt (pro Frame, echte Zeit): Figuren fahren ihre aufgezeichneten
+## Positionen rückwärts ab, Türen schließen sich wieder, die Uhr läuft rückwärts.
+func _update_rewind(real_dt: float) -> void:
+	var prev_pos := _rw_pos
+	_rw_pos -= _rw_rate * real_dt
+	if _rw_pos <= 0.0:
+		# _next_turn stellt den Checkpoint ohnehin exakt wieder her
+		_hud.set_letterbox(false)
+		_hud.hide_card()
+		_next_turn()
+		return
+	var t := int(_rw_pos)
+	var b := t * RoundSystem.Segment.STRIDE
+	for i in _all.size():
+		var a: Actor = _all[i]
+		var tr: PackedFloat32Array = _rw_tracks[i]
+		var before := a.global_position
+		a.apply_frame(tr[b], tr[b + 1], tr[b + 2])
+		var is_alive := tr[b + 3] > 0.5
+		if a.alive != is_alive:
+			a.set_alive(is_alive)         # Tote stehen beim Rückspulen wieder auf
+		a.apply_flags(int(tr[b + 4]))
+		# Spielgeschwindigkeit fürs Lauf-Animation-Tempo
+		a.speed = before.distance_to(a.global_position) / maxf((prev_pos - _rw_pos) / TimeControl.SIM_HZ, 0.0001)
+		a.reset_physics_interpolation()
+	for d in _rw_doors:
+		if d.tick > t and doors[d.door].is_open:
+			doors[d.door].set_open(false)   # animiert schließen
+	tick = t                            # Uhr im HUD läuft rückwärts
 
 
 ## Auswertung: alle Aufzeichnungen des Durchlaufs laufen gemeinsam ohne Unterbrechung.
@@ -691,19 +756,28 @@ func _sim_tick(dt: float) -> void:
 		a.update_motion(dt)
 
 	if phase == Phase.RESOLVE:
-		for i in _all.size():
-			var a := _all[i]
-			var t: PackedFloat32Array = _segment.tracks[i]
-			t.append(a.global_position.x)
-			t.append(a.global_position.z)
-			t.append(a.yaw)
-			t.append(1.0 if a.alive else 0.0)
-			t.append(float(a.flags()))
-			_segment.tracks[i] = t
+		_record_world(_segment.tracks)
+	elif phase == Phase.PLAYING:
+		_record_world(_rw_tracks)
 
 	tick += 1
 	if phase == Phase.RESOLVE and tick >= _resolve_end and _bullets.is_empty() and _grenades.is_empty():
 		_finish_resolve()
+
+
+## Welt-Zustand eines Ticks an eine Aufzeichnung anhängen: pro Figur x, z, yaw,
+## alive, flags (Schrittweite RoundSystem.Segment.STRIDE). PackedFloat32Array ist
+## ein Wert-Typ und wird deshalb nach dem append zurückgeschrieben.
+func _record_world(tracks: Array) -> void:
+	for i in _all.size():
+		var a := _all[i]
+		var t: PackedFloat32Array = tracks[i]
+		t.append(a.global_position.x)
+		t.append(a.global_position.z)
+		t.append(a.yaw)
+		t.append(1.0 if a.alive else 0.0)
+		t.append(float(a.flags()))
+		tracks[i] = t
 
 
 ## Wird von der Gegner-KI aufgerufen, wenn sie abdrückt.
@@ -789,6 +863,8 @@ func _open_door(i: int) -> void:
 	_snd.play("door", _pitch())
 	if phase == Phase.RESOLVE:
 		_segment.doors.append({"tick": tick, "door": i})
+	elif phase == Phase.PLAYING:
+		_rw_doors.append({"tick": tick, "door": i})
 	for e in enemies:
 		if e.alive:
 			e.hear(doors[i].center, DOOR_NOISE)
@@ -1171,11 +1247,17 @@ func _process(_delta: float) -> void:
 		_break_left -= real_dt
 		if _break_left <= 0.0:
 			_cut = {}
-			_next_turn()
+			_start_rewind()
+
+	if phase == Phase.REWIND:
+		_update_rewind(real_dt)
 
 	# Im Standbild stehen auch Animationen und Effekte still
 	var anim_scale := TimeControl.current_scale()
-	if phase == Phase.BREAK or phase == Phase.FAILED or phase == Phase.RESULTS:
+	if phase == Phase.REWIND:
+		# Animationen laufen im Rückspul-Tempo
+		anim_scale = _rw_rate / TimeControl.SIM_HZ
+	elif phase == Phase.BREAK or phase == Phase.FAILED or phase == Phase.RESULTS:
 		# ... außer in der Schuss-Nahaufnahme: dort läuft alles in extremer Zeitlupe weiter
 		anim_scale = 0.0 if _cut.is_empty() else 0.035
 	for a in _all:
@@ -1232,7 +1314,7 @@ func _update_vision_and_lasers() -> void:
 		var beam := _officer_lasers[i]
 		var beam2 := _reflect_lasers[i]
 		# Officer, die gerade nicht gespielt werden, treten optisch zurück
-		var dim := active != null and o != active and (phase == Phase.PLAYING or phase == Phase.BREAK)
+		var dim := active != null and o != active and (phase == Phase.PLAYING or phase == Phase.BREAK or phase == Phase.REWIND)
 		o.set_dim(dim)
 		# Laser nur, wenn der Officer lebt UND die Waffe angelegt hat
 		beam.visible = o.alive and o.aiming
@@ -1248,7 +1330,7 @@ func _update_vision_and_lasers() -> void:
 				beam2.visible = true
 				beam2.set_alpha(0.15 if dim else 0.55)
 				beam2.set_points(ends[1], ends[2])
-		if o == active and (phase == Phase.PLAYING or phase == Phase.BREAK):
+		if o == active and (phase == Phase.PLAYING or phase == Phase.BREAK or phase == Phase.REWIND):
 			_highlight_active(o, poses[i], ends)
 
 	var threats := []
@@ -1409,6 +1491,8 @@ func _update_hud(real_dt: float) -> void:
 			_hud.set_phase("ERGEBNIS", Color.WHITE)
 		Phase.INTRO:
 			_hud.set_phase("ZUGRIFF", COL_REALTIME)
+		Phase.REWIND:
+			_hud.set_phase("ZURÜCKSPULEN", COL_REALTIME)
 
 	var chips := []
 	for o in officers:
@@ -1438,6 +1522,8 @@ func _update_hud(real_dt: float) -> void:
 	var tempo := "ECHTZEIT" if scale > 0.95 else "TEMPO %d %%" % roundi(scale * 100.0)
 	if phase == Phase.BREAK:
 		tempo = "STANDBILD"
+	elif phase == Phase.REWIND:
+		tempo = "◀◀ × %.0f" % (_rw_rate / TimeControl.SIM_HZ)
 	_hud.set_clock("DURCHLAUF %d   ·   %.2f s\n%s" % [rounds.pass_index, seconds, tempo])
 
 
