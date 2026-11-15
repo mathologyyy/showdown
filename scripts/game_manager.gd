@@ -84,6 +84,11 @@ const GHOST_STEP := 12              # Vorschau früherer Officer: ein Wegpunkt a
 const STAR_SECONDS := 15.0
 const STAR_EXTRA_SHOTS := 2         # erlaubte Schüsse = Zahl der Gegner + so viele
 const STAR_PASSES := 4
+## Controller: linker Stick bewegt, rechter Stick zielt, LT/LB legt die Waffe an, RT/RB schießt.
+const PAD_MOVE_DEADZONE := 0.25
+const PAD_AIM_DEADZONE := 0.3
+const PAD_TRIGGER := 0.5            # ab dieser Auslenkung gilt ein Trigger (LT/RT) als gedrückt
+const PAD_THROW_DEFAULT := 5.0      # Wurfweite der Granate (m), solange der rechte Stick ruht
 const CAM_PITCH_DEG := 60.0
 const CAM_FOV := 50.0
 
@@ -150,6 +155,11 @@ var _lead_total := 0.0               # Vorlauf + Countdown in echten Sekunden (�
 var _taken := false
 var _fire_req := false
 var _hold_req := false
+var _pad_active := false             # zuletzt benutztes Eingabegerät war ein Controller
+var _pad_dev := 0                    # Gerätenummer dieses Controllers
+var _pad_fire_down := false          # RT über der Schwelle (ein Schuss pro Durchdrücken)
+var _pad_aim_dir := Vector3.ZERO     # letzte Zielrichtung per Stick (ZERO = Blickrichtung des Officers)
+var _pad_aim_dist := PAD_THROW_DEFAULT
 var _settle := 0                     # Ticks Pause nach einem Reset (Physik übernimmt Teleports)
 var _break_left := 0.0
 var _last_usec := 0
@@ -487,6 +497,8 @@ func _take_control() -> void:
 	_hud.hide_card()
 	_go_step = 0
 	_go_t = 0.0
+	_pad_aim_dir = Vector3.ZERO
+	_pad_aim_dist = PAD_THROW_DEFAULT
 	if _solo:
 		_hud.show_card("LETZTER OFFICER", "Keine Runden mehr  ·  ab jetzt läuft alles ohne Zurückspulen durch",
 				COL_DANGER, 3.0)
@@ -626,7 +638,7 @@ func _fail(reason: String) -> void:
 	_hud.hide_card()
 	_hud.set_letterbox(false)
 	_hud.set_rewind(false)
-	_hud.set_panel_text("MISSION FAILED\n\n%s\n\n[R] Durchlauf wiederholen      [N] Neue Mission" % reason)
+	_hud.set_panel_text("MISSION FAILED\n\n%s\n\n[R / A] Durchlauf wiederholen      [N / Y] Neue Mission" % reason)
 
 
 ## Abschluss-Replay: die Timeline aller Auswertungen in Echtzeit, ohne Sichtkegel.
@@ -679,7 +691,7 @@ func _show_results() -> void:
 			+ "Schüsse Gegner: %d\n"
 			+ "Geiseln gerettet: %d / %d\n"
 			+ "Officer einsatzfähig: %d / %d\n\n"
-			+ "[R] Replay erneut      [N] Neue Mission") % [
+			+ "[R / A] Replay erneut      [N / Y] Neue Mission") % [
 			stars.strip_edges(), lines, enemy_shots,
 			_count_alive(hostages), hostages.size(),
 			_count_alive(officers), officers.size()])
@@ -1221,7 +1233,26 @@ func _replay_tick() -> void:
 # =============================================================================
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton:
+		_use_pad(event.device)
+		if event.pressed:
+			_pad_button(event.button_index)
+		return
+	if event is InputEventJoypadMotion:
+		if absf(event.axis_value) > PAD_TRIGGER:
+			_use_pad(event.device)
+		if event.axis == JOY_AXIS_TRIGGER_RIGHT and event.device == _pad_dev:
+			var down: bool = event.axis_value > PAD_TRIGGER
+			if down and not _pad_fire_down:
+				request_fire()
+			_pad_fire_down = down
+		return
+	if event is InputEventMouseMotion:
+		if event.relative.length() > 2.0:
+			_pad_active = false          # Maus bewegt: wieder mit dem Mauszeiger zielen
+		return
 	if event is InputEventMouseButton and event.pressed:
+		_pad_active = false
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			request_fire()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -1229,6 +1260,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			TimeControl.adjust(-0.01)
 	elif event is InputEventKey and event.pressed and not event.echo:
+		_pad_active = false
 		match event.physical_keycode:
 			KEY_SPACE:
 				request_action()
@@ -1243,16 +1275,58 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_2:
 				TimeControl.adjust(0.01)
 			KEY_R:
-				if phase == Phase.FAILED:
-					rounds.retry_pass()
-					_start_turn()
-				elif phase == Phase.RESULTS:
-					_start_final_replay()
+				_retry_or_replay()
 			KEY_N:
-				if phase == Phase.FAILED or phase == Phase.RESULTS:
-					TimeControl.override_scale = -1.0
-					get_tree().reload_current_scene()
+				_new_mission()
 			# ESC gehört dem Pausemenü (scripts/pause_menu.gd)
+
+
+## Controller-Taste gedrückt. A und Y haben nach Fehlschlag/Ergebnis die Rolle von R und N.
+## Start gehört dem Pausemenü (scripts/pause_menu.gd).
+func _pad_button(button: int) -> void:
+	var ended := phase == Phase.FAILED or phase == Phase.RESULTS
+	match button:
+		JOY_BUTTON_RIGHT_SHOULDER:
+			request_fire()
+		JOY_BUTTON_A:
+			if ended:
+				_retry_or_replay()
+			else:
+				request_action()
+		JOY_BUTTON_B:
+			request_crouch()
+		JOY_BUTTON_X:
+			request_door()
+		JOY_BUTTON_Y:
+			if ended:
+				_new_mission()
+			else:
+				request_hold()
+		JOY_BUTTON_DPAD_UP:
+			TimeControl.adjust(0.01)
+		JOY_BUTTON_DPAD_DOWN:
+			TimeControl.adjust(-0.01)
+
+
+func _use_pad(device: int) -> void:
+	_pad_active = true
+	_pad_dev = device
+
+
+## R bzw. A: nach Fehlschlag den Durchlauf wiederholen, im Ergebnis das Replay erneut zeigen.
+func _retry_or_replay() -> void:
+	if phase == Phase.FAILED:
+		rounds.retry_pass()
+		_start_turn()
+	elif phase == Phase.RESULTS:
+		_start_final_replay()
+
+
+## N bzw. Y: neue Mission (nach Fehlschlag oder Ergebnis).
+func _new_mission() -> void:
+	if phase == Phase.FAILED or phase == Phase.RESULTS:
+		TimeControl.override_scale = -1.0
+		get_tree().reload_current_scene()
 
 
 func request_fire() -> void:
@@ -1292,8 +1366,38 @@ func _read_input() -> Dictionary:
 	if Input.is_physical_key_pressed(KEY_A): move.x -= 1.0
 	if Input.is_physical_key_pressed(KEY_D): move.x += 1.0
 	var action := Input.is_physical_key_pressed(KEY_SPACE)
-	return {"move": move.normalized(), "aim": _mouse_world_point(), "action": action,
-			"aim_hold": Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)}
+	var aim_hold := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	if not _pad_active:
+		return {"move": move.limit_length(1.0), "aim": _mouse_world_point(), "action": action,
+				"aim_hold": aim_hold}
+	# Controller: linker Stick bewegt (analog), A = Aktionstaste, LT oder LB = Waffe anlegen
+	var stick := Vector2(Input.get_joy_axis(_pad_dev, JOY_AXIS_LEFT_X), Input.get_joy_axis(_pad_dev, JOY_AXIS_LEFT_Y))
+	if stick.length() > PAD_MOVE_DEADZONE:
+		move += stick
+	move = move.limit_length(1.0)
+	action = action or Input.is_joy_button_pressed(_pad_dev, JOY_BUTTON_A)
+	aim_hold = aim_hold or Input.get_joy_axis(_pad_dev, JOY_AXIS_TRIGGER_LEFT) > PAD_TRIGGER \
+			or Input.is_joy_button_pressed(_pad_dev, JOY_BUTTON_LEFT_SHOULDER)
+	return {"move": move, "aim": _pad_aim_point(move, aim_hold), "action": action, "aim_hold": aim_hold}
+
+
+## Zielpunkt per Controller: der rechte Stick gibt die Richtung vor, seine Auslenkung
+## die Wurfweite der Granate. Ruht er, schaut der Officer in Laufrichtung – außer mit
+## angelegter Waffe, dann bleibt die Zielrichtung stehen (seitwärts laufen).
+func _pad_aim_point(move: Vector2, aim_hold: bool) -> Vector3:
+	var r := Vector2(Input.get_joy_axis(_pad_dev, JOY_AXIS_RIGHT_X), Input.get_joy_axis(_pad_dev, JOY_AXIS_RIGHT_Y))
+	var deflect := r.length()
+	if deflect > PAD_AIM_DEADZONE:
+		_pad_aim_dir = Vector3(r.x, 0.0, r.y).normalized()
+		_pad_aim_dist = GRENADE_RANGE * clampf(inverse_lerp(PAD_AIM_DEADZONE, 0.95, deflect), 0.2, 1.0)
+	else:
+		_pad_aim_dist = PAD_THROW_DEFAULT
+		if not aim_hold and move.length() > 0.01:
+			_pad_aim_dir = Vector3(move.x, 0.0, move.y).normalized()
+	if _pad_aim_dir == Vector3.ZERO:
+		_pad_aim_dir = active.forward()
+	var p := active.global_position + _pad_aim_dir * maxf(_pad_aim_dist, 1.0)
+	return Vector3(p.x, Actor.EYE_HEIGHT, p.z)
 
 
 ## Mauszeiger auf die Ebene in Schusshöhe projiziert.
@@ -1483,7 +1587,7 @@ func _update_hints() -> void:
 		return
 	var di := _near_door(active)
 	if di >= 0:
-		_fx.prompts = [{"pos": doors[di].center + Vector3(0, 2.0, 0), "text": "E"}]
+		_fx.prompts = [{"pos": doors[di].center + Vector3(0, 2.0, 0), "text": "X" if _pad_active else "E"}]
 
 	var list := []
 	for g in _ghosts:
@@ -1500,7 +1604,7 @@ func _update_hints() -> void:
 	_fx.ghosts = list
 
 	if active.role == "flash" and active.grenades > 0:
-		var aim := _last_aim if input_provider.is_valid() else _mouse_world_point()
+		var aim := _last_aim if input_provider.is_valid() or _pad_active else _mouse_world_point()
 		var arc := _grenade_preview(active.eye(), _grenade_target(active, aim))
 		_fx.throw_preview = {"arc": arc, "to": arc[arc.size() - 1], "radius": FLASH_RADIUS}
 
@@ -1661,18 +1765,24 @@ func _update_hud(real_dt: float) -> void:
 
 
 func _special_text(o: Officer) -> String:
+	# Tastennamen passend zum zuletzt benutzten Eingabegerät
+	var k_act := "A" if _pad_active else "LEERTASTE"
+	var k_crouch := "B" if _pad_active else "C"
+	var k_aim := "LT" if _pad_active else "RECHTE MAUSTASTE"
+	var k_fire := "RT" if _pad_active else "Linksklick"
 	var text := ""
 	match o.role:
 		"flash":
-			text = "LEERTASTE   Blendgranate × %d" % o.grenades \
+			text = "%s   Blendgranate × %d" % [k_act, o.grenades] \
 					+ ("  (beendet den Zug)" if GRENADE_ENDS_TURN and not _solo else "")
 		"shield":
-			text = "LEERTASTE   Schild heben" + ("  (beendet den Zug)" if SHIELD_ENDS_TURN and not _solo else "")
+			text = "%s   Schild heben" % k_act + ("  (beendet den Zug)" if SHIELD_ENDS_TURN and not _solo else "")
 		"roll":
-			text = "LEERTASTE   Hechtrolle  ·  " + ("bereit" if o.roll_ready() >= 1.0 else "lädt …")
-	var aim_line := "WAFFE ANGELEGT  ·  Linksklick schießt" if o.aiming \
-			else "RECHTE MAUSTASTE halten: Waffe anlegen"
-	return text + ("\nGEDUCKT  ·  C zum Aufstehen" if o.crouched else "\nC zum Ducken") + "\n" + aim_line
+			text = "%s   Hechtrolle  ·  " % k_act + ("bereit" if o.roll_ready() >= 1.0 else "lädt …")
+	var aim_line := "WAFFE ANGELEGT  ·  %s schießt" % k_fire if o.aiming \
+			else "%s halten: Waffe anlegen" % k_aim
+	return text + ("\nGEDUCKT  ·  %s zum Aufstehen" % k_crouch if o.crouched else "\n%s zum Ducken" % k_crouch) \
+			+ "\n" + aim_line
 
 
 # --- Hilfen ---------------------------------------------------------------------

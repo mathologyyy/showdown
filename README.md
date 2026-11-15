@@ -12,20 +12,24 @@ Oder direkt im Terminal: `godot --path .`
 
 ## Steuerung
 
-| Eingabe | Wirkung |
-|---|---|
-| W A S D | Officer bewegen |
-| Maus | Blickrichtung (folgt dem Mauszeiger verzögert) |
-| Rechte Maustaste (halten) | Waffe anlegen: erst dann gibt es Laser, Streubogen und Schuss; währenddessen läuft die Zeitlupe |
-| Linksklick | Schießen, nur mit angelegter Waffe (beendet den Zug) |
-| Leertaste | Aktionstaste: Spezialfähigkeit des Officers (Granate und Schild beenden den Zug, die Rolle nicht) |
-| C / Strg | Ducken / Aufstehen (umschalten) |
-| E | Tür öffnen (in Reichweite erscheint ein „E“ an der Tür) |
-| F / Enter | Position halten (Zug ohne Schuss beenden) |
-| 1 / 2 oder Mausrad | Zeitlupe langsamer / schneller |
-| R | nach Fehlschlag: Durchlauf wiederholen · im Ergebnis: Replay erneut |
-| N | neue Mission (nach Fehlschlag oder Ergebnis) |
-| Esc | Pausemenü (Fortsetzen / Mission neu starten / Beenden) |
+| Tastatur / Maus | Controller | Wirkung |
+|---|---|---|
+| W A S D | Linker Stick | Officer bewegen |
+| Maus | Rechter Stick | Blickrichtung (folgt verzögert). Am Controller schaut der Officer bei ruhendem rechten Stick in Laufrichtung. |
+| Rechte Maustaste (halten) | LT oder LB (halten) | Waffe anlegen: erst dann gibt es Laser, Streubogen und Schuss; währenddessen läuft die Zeitlupe |
+| Linksklick | RT oder RB | Schießen, nur mit angelegter Waffe (beendet den Zug) |
+| Leertaste | A | Aktionstaste: Spezialfähigkeit des Officers (Granate und Schild beenden den Zug, die Rolle nicht) |
+| C / Strg | B | Ducken / Aufstehen (umschalten) |
+| E | X | Tür öffnen (in Reichweite erscheint ein Hinweis an der Tür) |
+| F / Enter | Y | Position halten (Zug ohne Schuss beenden) |
+| 1 / 2 oder Mausrad | Steuerkreuz ↓ / ↑ | Zeitlupe langsamer / schneller |
+| R | A | nach Fehlschlag: Durchlauf wiederholen · im Ergebnis: Replay erneut |
+| N | Y | neue Mission (nach Fehlschlag oder Ergebnis) |
+| Esc | Start | Pausemenü (Fortsetzen / Mission neu starten / Beenden) |
+
+Das Spiel schaltet automatisch auf das zuletzt benutzte Eingabegerät um; die Hinweise im HUD
+zeigen dann die passenden Tasten. Mit dem Controller bestimmt die Auslenkung des rechten Sticks
+die Wurfweite der Blendgranate (ruht er: 5 m in Blickrichtung).
 
 ## Das Squad
 

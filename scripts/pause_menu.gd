@@ -1,7 +1,8 @@
 class_name PauseMenu
 extends CanvasLayer
 ## Pausemenü: halbtransparente Abdunklung + zentriertes Panel mit „Fortsetzen“,
-## „Mission neu starten“ und „Beenden“. Esc öffnet/schließt es (siehe _input).
+## „Mission neu starten“ und „Beenden“. Esc bzw. Start am Controller öffnet/schließt es
+## (siehe _input); die Buttons lassen sich mit Steuerkreuz/Stick und A bedienen.
 ## Layer 10 und PROCESS_MODE_ALWAYS, damit es bei pausiertem Baum weiterläuft.
 ## Alles per Code aufgebaut (Stil wie hud.gd).
 
@@ -51,7 +52,7 @@ func _ready() -> void:
 	_button(col, "Beenden").pressed.connect(quit_game)
 
 	var hint := _label(col, 14, Color(0.7, 0.7, 0.7))
-	hint.text = "ESC  Fortsetzen"
+	hint.text = "ESC / START  Fortsetzen"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 
@@ -134,6 +135,12 @@ func _input(event: InputEvent) -> void:
 		toggle()
 		get_viewport().set_input_as_handled()
 		return
+	# Controller: Start öffnet/schließt das Menü, B schließt es
+	if event is InputEventJoypadButton and event.pressed:
+		if event.button_index == JOY_BUTTON_START or (is_open and event.button_index == JOY_BUTTON_B):
+			toggle()
+			get_viewport().set_input_as_handled()
+			return
 	if not is_open:
 		return
 	# Menü offen: Tastendrücke dürfen nicht ins Spiel durchfallen – außer der

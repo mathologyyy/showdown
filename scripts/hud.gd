@@ -14,18 +14,19 @@ const BAR_HEIGHT := 70.0
 const TAKEOVER_BAR_W := 320.0
 const TAKEOVER_BAR_H := 8.0
 const ICON_MARGIN := 16.0         # Abstand der Officer-Icons zum unteren Bildrand
-## Tastenbelegung (oben links): [Taste, Wirkung]
+## Tastenbelegung (oben links): [Tastatur/Maus, Controller, Wirkung]
 const KEY_HELP := [
-	["W A S D", "Bewegen"],
-	["Maus", "Zielen"],
-	["Rechte Maustaste", "Waffe anlegen (halten)"],
-	["Linksklick", "Schießen (nur angelegt)"],
-	["Leertaste", "Spezialfähigkeit"],
-	["C / Strg", "Ducken"],
-	["E", "Tür öffnen"],
-	["F / Enter", "Position halten"],
-	["1 / 2 / Mausrad", "Zeitlupe"],
-	["Esc", "Pause"],
+	["TASTATUR", "CONTROLLER", ""],
+	["W A S D", "Linker Stick", "Bewegen"],
+	["Maus", "Rechter Stick", "Zielen"],
+	["Rechte Maustaste", "LT / LB", "Waffe anlegen (halten)"],
+	["Linksklick", "RT / RB", "Schießen (nur angelegt)"],
+	["Leertaste", "A", "Spezialfähigkeit"],
+	["C / Strg", "B", "Ducken"],
+	["E", "X", "Tür öffnen"],
+	["F / Enter", "Y", "Position halten"],
+	["1 / 2 / Mausrad", "Steuerkreuz ↓ / ↑", "Zeitlupe"],
+	["Esc", "Start", "Pause"],
 ]
 
 
@@ -362,18 +363,23 @@ func _ready() -> void:
 	root.add_child(_hint)
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	_hint.offset_left = 12
-	_hint.offset_top = 10
+	_hint.offset_top = 66                # unter der Abschnittsleiste, damit sich nichts überlappt
 	var keys := GridContainer.new()
-	keys.columns = 2
+	keys.columns = 3
 	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	keys.add_theme_constant_override("h_separation", 12)
 	keys.add_theme_constant_override("v_separation", 0)
 	_hint.add_child(keys)
-	for pair in KEY_HELP:
-		for col in 2:
-			var kl := _label(keys, 12, Color(1.0, 0.85, 0.2) if col == 0 else Color(0.82, 0.82, 0.82))
+	for r in KEY_HELP.size():
+		for col in 3:
+			var tint := Color(0.82, 0.82, 0.82)
+			if r == 0:
+				tint = Color(0.55, 0.6, 0.66)         # Kopfzeile
+			elif col < 2:
+				tint = Color(1.0, 0.85, 0.2)
+			var kl := _label(keys, 12, tint)
 			kl.add_theme_constant_override("outline_size", 3)
-			kl.text = pair[col]
+			kl.text = KEY_HELP[r][col]
 
 	# --- Tafel in der Mitte (Fehlschlag, Ergebnis) ---
 	_panel = PanelContainer.new()
