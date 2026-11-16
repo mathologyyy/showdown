@@ -10,6 +10,10 @@ Godot **4.7** (entwickelt und getestet mit 4.7.2 stable), reines GDScript.
 
 Oder direkt im Terminal: `godot --path .`
 
+Beim Start erscheint das **Hauptmenü** („Spiel starten“, „So wird gespielt“, „Beenden“). Vor der
+ersten Mission erklären drei kurze Tafeln das Runden-Prinzip; jede Taste oder ein Klick blättert
+weiter, Esc bzw. Start überspringt sie. Über das Pausemenü kommt man zurück ins Hauptmenü.
+
 ## Steuerung
 
 | Tastatur / Maus | Controller | Wirkung |
@@ -25,7 +29,7 @@ Oder direkt im Terminal: `godot --path .`
 | 1 / 2 oder Mausrad | Steuerkreuz ↓ / ↑ | Zeitlupe langsamer / schneller |
 | R | A | nach Fehlschlag: Durchlauf wiederholen · im Ergebnis: Replay erneut |
 | N | Y | neue Mission (nach Fehlschlag oder Ergebnis) |
-| Esc | Start | Pausemenü (Fortsetzen / Zug beenden / Mission neu starten / Beenden) |
+| Esc | Start | Pausemenü (Fortsetzen / Zug beenden / Mission neu starten / Hauptmenü / Beenden) |
 
 Die Controller-Tasten sind nach ihrer **Lage** benannt wie beim Xbox-Pad (A unten, B rechts,
 X links, Y oben). Das Spiel erkennt am Gerätenamen, ob ein Xbox-, Switch-Pro- oder
@@ -103,6 +107,11 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
   keine Runden mehr. Ab dann wird nichts mehr eingefroren oder zurückgespult: Schüsse,
   Granaten und Schild wirken sofort, und es geht ohne Unterbrechung weiter, bis alle Gegner
   ausgeschaltet sind oder der Officer fällt. „Position halten“ hat dann keine Wirkung.
+- **Treffer-Feedback:** Ein sichtbarer Treffer an einer Figur hält das Bild kurz an, die Kamera
+  ruckt, es gibt einen eigenen Ton und der Controller vibriert (auch bei Schuss und Blendgranate).
+  Treffer außerhalb der Sichtkegel bleiben wie bisher ungewiss.
+- **Abschluss-Replay:** Die Kamera folgt dem Team, Schussbahnen bleiben kurz als Leuchtspur
+  stehen, und beim letzten ausgeschalteten Gegner fährt sie in kurzer Zeitlupe nah heran.
 - Sind nach einer Auswertung alle Gegner ausgeschaltet: Replay des ganzen Einsatzes in
   Echtzeit, danach Ergebnis mit **Wertung**: je ein Stern für Einsatzdauer, Zahl der
   Team-Schüsse und Zahl der Durchläufe.
@@ -147,6 +156,8 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 | `scripts/fx_overlay.gd` | 2D-Effekte über dem Nebel: Kugeln, Mündungsfeuer, Einschläge, Streubogen, Markierung |
 | `scripts/vision.gd` | Sichtkegel per Raycast, Abdunkelungs-Maske, Sichtbarkeitstest |
 | `scripts/level.gd` | Test-Wohnung als Datentabellen (Wände, Möbel, Startpositionen) |
+| `scripts/main_menu.gd` | Hauptmenü und Einweisung (drei gezeichnete Tafeln) |
+| `scripts/pause_menu.gd` | Pausemenü |
 | `scripts/hud.gd` | HUD: Abschnittsleiste, Officer-Icons, Tastenbelegung, Titelkarten, Kinobalken, Ergebnis-Tafel |
 | `shaders/fog.gdshader` | Abdunkelung außerhalb der Sichtkegel |
 | `shaders/rewind.gdshader` | VHS-Effekt beim Zurückspulen |

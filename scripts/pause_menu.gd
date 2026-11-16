@@ -9,6 +9,11 @@ extends CanvasLayer
 ## „Zug beenden“ gewählt: der GameManager beendet den Zug des aktiven Officers
 ## (Position halten). Bewusst nur hier im Menü, damit es nicht versehentlich passiert.
 signal end_turn_requested
+## „Hauptmenü“ gewählt: der GameManager lädt die Szene neu und zeigt das Hauptmenü.
+signal main_menu_requested
+
+## false: Esc/Start öffnen das Menü nicht (solange das Hauptmenü zu sehen ist).
+var enabled := true
 
 var is_open := false
 
@@ -54,6 +59,7 @@ func _ready() -> void:
 	_resume.pressed.connect(close)
 	_button(col, "Zug beenden (Position halten)").pressed.connect(end_turn)
 	_button(col, "Mission neu starten").pressed.connect(restart)
+	_button(col, "Hauptmenü").pressed.connect(to_main_menu)
 	_button(col, "Beenden").pressed.connect(quit_game)
 
 	var hint := _label(col, 14, Color(0.7, 0.7, 0.7))
@@ -134,12 +140,19 @@ func restart() -> void:
 	get_tree().reload_current_scene()
 
 
+func to_main_menu() -> void:
+	close()
+	main_menu_requested.emit()
+
+
 func quit_game() -> void:
 	get_tree().paused = false
 	get_tree().quit()
 
 
 func _input(event: InputEvent) -> void:
+	if not enabled:
+		return
 	# Esc gehört dem Pausemenü – das Spiel beendet es nicht mehr
 	if event is InputEventKey and event.physical_keycode == KEY_ESCAPE \
 			and event.pressed and not event.echo:

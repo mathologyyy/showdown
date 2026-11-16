@@ -32,6 +32,8 @@ func _ready() -> void:
 	_add("freeze", _tone(0.35, 110.0, 55.0, 0.1), -4.0)
 	_add("rewind", _tone(0.9, 300.0, 1500.0, 0.25), -8.0)
 	_add("alarm", _tone(0.18, 520.0, 390.0, 0.0), -9.0)
+	_add("kill", _tone(0.25, 900.0, 220.0, 0.25), -5.0)     # Gegner ausgeschaltet
+	_add("loss", _tone(0.45, 220.0, 60.0, 0.15), -4.0)      # Officer oder Geisel getroffen
 	for i in VOICES:
 		var p := AudioStreamPlayer.new()
 		add_child(p)

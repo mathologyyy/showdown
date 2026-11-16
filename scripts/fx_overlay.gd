@@ -9,6 +9,7 @@ const MUZZLE_LIFE := 0.07       # Spielsekunden
 const SPARK_LIFE := 0.16
 const BLOOD_LIFE := 0.30
 const PULSE_LIFE := 0.9         # echte Sekunden
+const TRAIL_LIFE := 0.7         # echte Sekunden: so lange bleibt eine Schussbahn im Replay stehen
 const BULLET_TAIL := 0.9        # sichtbare Länge der Leuchtspur in Metern
 
 var camera: Camera3D
@@ -64,6 +65,12 @@ func add_flash(pos: Vector3, radius: float) -> void:
 		"life": 0.7, "real": true, "radius": radius, "color": Color.WHITE})
 
 
+## Schussbahn, die kurz stehen bleibt und verblasst (Abschluss-Replay).
+func add_trail(from: Vector3, to: Vector3, enemy: bool) -> void:
+	_effects.append({"kind": "trail", "pos": from, "dir": to, "age": 0.0, "life": TRAIL_LIFE,
+		"real": true, "color": Color(1.0, 0.55, 0.1) if enemy else Color(1.0, 1.0, 0.65)})
+
+
 func clear() -> void:
 	_effects.clear()
 	bullets = []
@@ -102,6 +109,7 @@ func _draw() -> void:
 			"blood": _draw_blood(e)
 			"pulse": _draw_pulse(e)
 			"flash": _draw_flash(e)
+			"trail": _draw_trail(e)
 	for g in grenades:
 		_draw_grenade(g)
 	for t in threats:
@@ -129,6 +137,15 @@ func _draw_bullet(b: Dictionary) -> void:
 	draw_line(tail, head, Color(col, 0.25), 9.0, true)
 	draw_line(tail.lerp(head, 0.4), head, col, 3.5, true)
 	draw_circle(head, 3.5, Color.WHITE)
+
+
+func _draw_trail(e: Dictionary) -> void:
+	var k: float = 1.0 - e.age / e.life
+	var col: Color = e.color
+	var a := _px(e.pos)
+	var b := _px(e.dir)                       # "dir" trägt hier den Endpunkt
+	draw_line(a, b, Color(col, 0.12 * k), 8.0, true)
+	draw_line(a, b, Color(col, 0.5 * k), 2.0, true)
 
 
 func _draw_muzzle(e: Dictionary) -> void:

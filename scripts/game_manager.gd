@@ -21,7 +21,13 @@ extends Node3D
 ## Die Simulation läuft ausschließlich in _physics_process mit festem Zeitschritt
 ## (deterministisch, siehe time_control.gd), alles Sichtbare in _process.
 
-enum Phase { PLAYING, BREAK, RESOLVE, FAILED, FINAL_REPLAY, RESULTS, INTRO, REWIND }
+enum Phase { PLAYING, BREAK, RESOLVE, FAILED, FINAL_REPLAY, RESULTS, INTRO, REWIND, MENU }
+
+## Hauptmenü + Einweisung (eigenes Skript, per Pfad geladen).
+const MainMenuScript := preload("res://scripts/main_menu.gd")
+## Hauptmenü schon durchlaufen? Statisch, damit "Neue Mission" (Szene neu laden)
+## direkt ins Spiel führt und nicht wieder ins Menü.
+static var _menu_done := false
 
 ## Was einen Zug beendet (zum Ausprobieren umschaltbar):
 const ENEMY_SHOT_ENDS_TURN := false   # Gegnerschüsse frieren nicht mehr ein, die Kugel fliegt sofort
@@ -107,6 +113,14 @@ const PAD_AIM_DEADZONE := 0.4
 const PAD_RELEASE_DROP := 0.04
 const PAD_TRIGGER := 0.5            # ab dieser Auslenkung gilt ein Trigger (LT/RT) als gedrückt
 const PAD_THROW_DEFAULT := 5.0      # Wurfweite der Granate (m), solange der rechte Stick ruht
+## Treffer-Feedback: so lange steht das Bild bei einem sichtbaren Treffer (echte Sekunden).
+const HITSTOP_SECONDS := 0.07
+## Abschluss-Replay: Kamera folgt dem Team (Abstand als Anteil der Totalen) und fährt beim
+## letzten ausgeschalteten Gegner kurz nah heran, dazu Zeitlupe.
+const REPLAY_ZOOM := 0.72
+const REPLAY_KILL_ZOOM := 0.45
+const REPLAY_KILL_SCALE := 0.2      # Tempo der Zeitlupe beim letzten Treffer
+const REPLAY_KILL_SECONDS := 1.3    # echte Sekunden
 const CAM_PITCH_DEG := 60.0
 const CAM_FOV := 50.0
 
@@ -189,6 +203,14 @@ var _time := 0.0
 var _rp_seg := 0
 var _rp_tick := 0
 var _rp_elapsed := 0
+var _rp_cam_k := 0.0                 # 0 = Totale, 1 = Replay-Kamera folgt dem Team
+var _rp_focus := Vector3.ZERO        # Punkt, auf den die Replay-Kamera schaut
+var _rp_zoom := 1.0
+var _rp_slow := 0.0                  # verbleibende echte Sekunden Zeitlupe (letzter Treffer)
+var _rp_final_done := false          # Zeitlupe beim letzten Gegner schon ausgelöst
+var _rp_last_down := Vector3.ZERO    # dort ist zuletzt ein Gegner gefallen
+var _hitstop := 0.0                  # verbleibende echte Sekunden Bildstopp nach einem Treffer
+var _menu = null                     # Hauptmenü (main_menu.gd), nur bis zum Spielstart
 
 
 func _ready() -> void:
@@ -256,6 +278,7 @@ func _ready() -> void:
 	_pause = PauseMenu.new()              # CanvasLayer 10: Pausemenü
 	add_child(_pause)
 	_pause.end_turn_requested.connect(request_hold)
+	_pause.main_menu_requested.connect(_to_main_menu)
 	# Bauart eines schon angeschlossenen Controllers für die Tastenanzeige ermitteln
 	var pads := Input.get_connected_joypads()
 	_set_pad_kind(pads[0] if not pads.is_empty() else -1)
@@ -263,7 +286,42 @@ func _ready() -> void:
 	# Tastaturfokus sofort holen (beim Start aus dem Editor sonst erst nach einem Klick)
 	get_window().grab_focus()
 	_last_usec = Time.get_ticks_usec()
+	if _menu_done:
+		_start_intro()
+	else:
+		_open_menu()
+
+
+# =============================================================================
+#  Hauptmenü
+# =============================================================================
+
+## Vor dem ersten Einsatz: Menü über dem stehenden Spielbild. Simulation, HUD und
+## Pausemenü ruhen, bis "Spiel starten" gewählt (und die Einweisung durch) ist.
+func _open_menu() -> void:
+	phase = Phase.MENU
+	_hud.visible = false
+	_pause.enabled = false
+	_menu = MainMenuScript.new()
+	add_child(_menu)
+	_menu.start_requested.connect(_on_menu_start)
+
+
+func _on_menu_start() -> void:
+	_menu_done = true
+	_menu.queue_free()
+	_menu = null
+	_hud.visible = true
+	_pause.enabled = true
+	_last_usec = Time.get_ticks_usec()
 	_start_intro()
+
+
+## Aus dem Pausemenü zurück ins Hauptmenü: Szene neu laden, Menü wieder zeigen.
+func _to_main_menu() -> void:
+	_menu_done = false
+	TimeControl.override_scale = -1.0
+	get_tree().reload_current_scene()
 
 
 # =============================================================================
@@ -676,6 +734,10 @@ func _start_final_replay() -> void:
 	_rp_seg = 0
 	_rp_tick = 0
 	_rp_elapsed = 0
+	_rp_focus = _level_center()
+	_rp_zoom = 1.0
+	_rp_slow = 0.0
+	_rp_final_done = false
 	_bullets.clear()
 	_grenades.clear()
 	_fx.clear()
@@ -730,6 +792,8 @@ func _show_results() -> void:
 # =============================================================================
 
 func _physics_process(_delta: float) -> void:
+	if _hitstop > 0.0:
+		return                          # Bildstopp nach einem Treffer
 	if _settle > 0:
 		_settle -= 1
 		return
@@ -959,6 +1023,8 @@ func _shot_fx(shooter: Actor, dir: Vector3) -> void:
 	_fx.add_muzzle(shooter.eye() + dir * 0.95, dir, shooter is Enemy)
 	_shake = 0.12
 	_snd.play("shot_enemy" if shooter is Enemy else "shot_team", _pitch())
+	if shooter is Officer:
+		_rumble(0.5, 0.0, 0.07)
 
 
 ## Tonhöhe passend zum Spieltempo: in Zeitlupe klingen Schüsse tiefer und gedehnt.
@@ -1013,6 +1079,8 @@ func _step_bullets(dt: float) -> void:
 			b.left -= move
 			if b.left <= 0.0:
 				_impact(b.pos, b.hit_actor)
+				if b.hit_actor:
+					_hit_feedback(b.pos, not b.enemy)
 				_bullets.remove_at(i)
 			continue
 		var to: Vector3 = b.pos + b.dir * step
@@ -1064,6 +1132,7 @@ func _step_bullets(dt: float) -> void:
 				continue
 			if on_actor:
 				hit.collider.kill()
+				_hit_feedback(hit.position, hit.collider is Enemy)
 			_impact(hit.position, on_actor)
 			_bullets.remove_at(i)
 		else:
@@ -1218,6 +1287,7 @@ func _detonate(g: Dictionary) -> void:
 	_fx.add_flash(at, FLASH_RADIUS)
 	_shake = 0.2
 	_snd.play("flash", _pitch())
+	_rumble(0.4, 1.0, 0.3)
 	if g.ghost:
 		return
 	for e in enemies:
@@ -1227,6 +1297,25 @@ func _detonate(g: Dictionary) -> void:
 			e.blind(FLASH_SECONDS)
 		else:
 			e.hear(at)
+
+
+## Spürbarer Treffer an einer Figur: kurzer Bildstopp, Kamera-Ruck, eigener Ton und
+## Vibration. Nur wenn die Stelle im Sichtkegel liegt – sonst bleibt der Treffer ungewiss.
+## enemy_down: ein Gegner wurde getroffen (sonst Officer oder Geisel).
+func _hit_feedback(pos: Vector3, enemy_down: bool) -> void:
+	if not _vision.is_point_visible(pos):
+		return
+	_hitstop = HITSTOP_SECONDS
+	_shake = maxf(_shake, 0.28)
+	_snd.play("kill" if enemy_down else "loss", _pitch())
+	_rumble(0.5, 0.9, 0.18)
+
+
+## Controller-Vibration (nur wenn gerade mit Controller gespielt wird).
+## weak/strong: Stärke der beiden Motoren 0..1.
+func _rumble(weak: float, strong: float, seconds: float) -> void:
+	if _pad_active:
+		Input.start_joy_vibration(_pad_dev, weak, strong, seconds)
 
 
 ## Einschlag-Effekt, nur wenn die Stelle im Sichtkegel liegt (sonst bleibt der Treffer ungewiss).
@@ -1253,12 +1342,19 @@ func _replay_tick() -> void:
 		var is_alive := t[b + 3] > 0.5
 		if a.alive != is_alive:
 			a.set_alive(is_alive)
+			if a is Enemy and not is_alive:
+				_rp_last_down = a.global_position
 		a.apply_flags(int(t[b + 4]))
 		a.update_motion(TimeControl.DT)
+	if not _rp_final_done and _rp_elapsed > 0 and _count_alive(enemies) == 0:
+		# letzter Gegner ausgeschaltet: kurze Zeitlupe, Kamera fährt heran
+		_rp_final_done = true
+		_rp_slow = REPLAY_KILL_SECONDS
 	for s in seg.shots:
 		if s.tick == _rp_tick:
 			_bullets.append({"pos": s.from, "prev": s.from, "dir": s.dir, "enemy": s.enemy,
 				"left": s.dist, "ghost": true, "hit_actor": s.hit_actor})
+			_fx.add_trail(s.from, s.from + s.dir * s.dist, s.enemy)
 			if s.who >= 0:
 				_shot_fx(_all[s.who], s.dir)
 	for d in seg.doors:
@@ -1519,6 +1615,12 @@ func _process(_delta: float) -> void:
 
 	if phase == Phase.INTRO:
 		_update_intro(real_dt)
+	_hitstop = maxf(0.0, _hitstop - real_dt)
+	if phase == Phase.FINAL_REPLAY:
+		# Abschluss-Replay: Echtzeit-Tempo, beim letzten Treffer kurz Zeitlupe
+		_rp_slow = maxf(0.0, _rp_slow - real_dt)
+		var want := REPLAY_KILL_SCALE if _rp_slow > 0.0 else TimeControl.realtime_speed
+		TimeControl.override_scale = move_toward(TimeControl.override_scale, want, real_dt * 8.0)
 	_update_go(real_dt)
 
 	if phase == Phase.BREAK:
@@ -1565,7 +1667,7 @@ func _process(_delta: float) -> void:
 ## Feste Kamera: Abstand so gewählt, dass die ganze Wohnung ins Fenster passt.
 func _update_camera(real_dt: float) -> void:
 	var bd: Array = Level.BOUNDS
-	var center := Vector3((bd[0] + bd[2]) * 0.5, 0.0, (bd[1] + bd[3]) * 0.5)
+	var center := _level_center()
 	var screen := get_viewport().get_visible_rect().size
 	var aspect := screen.x / maxf(screen.y, 1.0)
 	var half := tan(deg_to_rad(CAM_FOV) * 0.5)
@@ -1580,7 +1682,34 @@ func _update_camera(real_dt: float) -> void:
 	# Nahaufnahme beim Schuss: weich an den Schützen heranfahren und wieder zurück
 	_cam_k = lerpf(_cam_k, 0.0 if _cut.is_empty() else 1.0, 1.0 - exp(-4.0 * real_dt))
 	var close := Vector3(_cam_focus.x, 0.8, _cam_focus.z) + back * dist * CUT_ZOOM
-	_camera.global_position = overview.lerp(close, smoothstep(0.0, 1.0, _cam_k)) + jitter
+	# Abschluss-Replay: die Kamera folgt dem Team; beim letzten Treffer fährt sie nah heran
+	var in_replay := phase == Phase.FINAL_REPLAY
+	var follow_w := 1.0 - exp(-3.0 * real_dt)
+	_rp_cam_k = lerpf(_rp_cam_k, 1.0 if in_replay else 0.0, 1.0 - exp(-2.5 * real_dt))
+	if in_replay:
+		var kill_shot := _rp_slow > 0.0
+		var target := _rp_last_down if kill_shot else center.lerp(_squad_center(center), 0.7)
+		_rp_focus = _rp_focus.lerp(target, follow_w)
+		_rp_zoom = lerpf(_rp_zoom, REPLAY_KILL_ZOOM if kill_shot else REPLAY_ZOOM, follow_w)
+	var follow := Vector3(_rp_focus.x, 0.0, _rp_focus.z) + back * dist * _rp_zoom
+	var pos := overview.lerp(follow, smoothstep(0.0, 1.0, _rp_cam_k))
+	_camera.global_position = pos.lerp(close, smoothstep(0.0, 1.0, _cam_k)) + jitter
+
+
+func _level_center() -> Vector3:
+	var bd: Array = Level.BOUNDS
+	return Vector3((bd[0] + bd[2]) * 0.5, 0.0, (bd[1] + bd[3]) * 0.5)
+
+
+## Mittelpunkt der lebenden Officer (fallback, wenn keiner lebt).
+func _squad_center(fallback: Vector3) -> Vector3:
+	var sum := Vector3.ZERO
+	var n := 0
+	for o in officers:
+		if o.alive:
+			sum += o.global_position
+			n += 1
+	return sum / n if n > 0 else fallback
 
 
 func _update_vision_and_lasers() -> void:
@@ -1809,6 +1938,8 @@ func _update_hud(real_dt: float) -> void:
 			_hud.set_phase("ERGEBNIS", Color.WHITE)
 		Phase.INTRO:
 			_hud.set_phase("ZUGRIFF", COL_REALTIME)
+		Phase.MENU:
+			_hud.set_phase("", Color.WHITE)
 		Phase.REWIND:
 			_hud.set_phase("ZURÜCKSPULEN", COL_REALTIME)
 
