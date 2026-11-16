@@ -5,6 +5,7 @@ extends StaticBody3D
 ## Flügel schwingen um ihre Angeln an den Enden der Lücke zur selben Seite auf.
 
 const THICKNESS := 0.12
+const LEAF_W := 0.855           # Breite des Türflügel-Bausteins (assets/props/door_leaf.tscn)
 const OPEN_ANGLE := PI * 0.47
 const SWING_SPEED := 9.0        # Radiant pro Spielsekunde
 
@@ -31,7 +32,9 @@ func setup(a: Vector3, b: Vector3) -> void:
 	cs.position = center + Vector3(0, Level.WALL_H * 0.5, 0)
 	add_child(cs)
 
-	# Türflügel: austauschbarer Baustein (Einheitswürfel, wird auf Flügelgröße gestreckt)
+	# Türflügel: austauschbarer Baustein in echter Größe (LEAF_W breit entlang X, Ursprung
+	# in der Mitte). Für Türen in Z-Wänden wird er um 90° gedreht; nur wenn eine Lücke
+	# nicht die Standardbreite hat, wird er in der Breite angepasst.
 	var leaf_scene: PackedScene = load(Level.PROP_DIR + "door_leaf.tscn")
 	for hinge: Vector3 in [a, b]:
 		var pivot := Node3D.new()
@@ -39,7 +42,8 @@ func setup(a: Vector3, b: Vector3) -> void:
 		pivot.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		add_child(pivot)
 		var leaf := leaf_scene.instantiate() as Node3D
-		leaf.scale = _size(length * 0.5 - 0.02, along_x)
+		leaf.rotation.y = 0.0 if along_x else PI * 0.5
+		leaf.scale.x = (length * 0.5 - 0.02) / LEAF_W
 		# Flügel reicht von der Angel bis zur Mitte der Lücke
 		leaf.position = (center - hinge) * 0.5 + Vector3(0, Level.WALL_H * 0.5, 0)
 		pivot.add_child(leaf)

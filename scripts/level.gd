@@ -65,42 +65,46 @@ const DOORS := [
 	[1.5, 2.125, 1.5, 3.875],       # Büro
 ]
 
-## Kisten [x, z, Breite(x), Tiefe(z)]: niedrige Deckung. Sie blockieren den Weg, aber
-## weder Sicht noch Kugeln stehender Schützen. Wer geduckt direkt dahinter sitzt, kann
-## nicht getroffen werden – muss zum Schießen aber aufstehen.
+## Kisten, Möbel und Metall-Objekte haben alle dasselbe Zeilenformat:
+##   [x, z, Breite(x), Tiefe(z), Baustein, Drehung in Grad (optional)]
+## x/z = Mittelpunkt, Breite/Tiefe = Grundfläche der Kollision im Level. Der Baustein
+## (Szene in assets/props/) ist in genau dieser Größe gebaut und wird NICHT gestreckt;
+## mit Drehung 90 liegt ein Baustein quer (dann sind Breite und Tiefe vertauscht).
+
+## Kisten: niedrige Deckung. Sie blockieren den Weg, aber weder Sicht noch Kugeln
+## stehender Schützen. Wer geduckt direkt dahinter sitzt, kann nicht getroffen werden –
+## muss zum Schießen aber aufstehen.
 const CRATES := [
-	[-0.5, 2.6, 0.9, 0.45],    # Flur vorn
-	[0.5, -1.0, 0.9, 0.45],    # Flur hinten
-	[-3.0, 2.2, 0.5, 1.0],     # Wohnzimmer
-	[-2.6, -2.3, 0.5, 1.0],    # Schlafzimmer
-	[2.3, -1.2, 0.5, 1.0],     # Küche
-	[2.6, 3.0, 0.5, 1.0],      # Büro
+	[-0.5, 2.6, 0.9, 0.45, "crate_small"],     # Flur vorn
+	[0.5, -1.0, 0.9, 0.45, "crate_small"],     # Flur hinten
+	[-3.0, 2.2, 0.5, 1.0, "crate_long", 90],   # Wohnzimmer
+	[-2.6, -2.3, 0.5, 1.0, "crate_long", 90],  # Schlafzimmer
+	[2.3, -1.2, 0.5, 1.0, "crate_long", 90],   # Küche
+	[2.6, 3.0, 0.5, 1.0, "crate_long", 90],    # Büro
 ]
 const CRATE_H := 0.75
-const CRATE_COLOR := Color(0.62, 0.50, 0.26)
 
-## Möbel [x, z, Breite(x), Tiefe(z)]
+## Möbel: volle Deckung (FURN_H hoch).
 const FURNITURE := [
-	[-5.0, 3.9, 2.4, 0.8],    # Sofa
-	[-4.8, 2.2, 1.3, 0.8],    # Couchtisch
-	[-7.6, 2.4, 0.5, 1.8],    # Regal
-	[-6.6, -3.3, 2.0, 2.0],   # Bett
-	[-2.0, -4.0, 0.7, 0.8],   # Kleiderschrank
-	[4.6, -2.0, 2.0, 0.9],    # Kücheninsel
-	[5.2, -4.15, 4.5, 0.6],   # Küchenzeile
-	[5.4, 1.7, 2.0, 0.8],     # Schreibtisch
+	[-5.0, 3.9, 2.4, 0.8, "sofa"],
+	[-4.8, 2.2, 1.3, 0.8, "coffee_table"],
+	[-7.6, 2.4, 0.5, 1.8, "shelf"],
+	[-6.6, -3.3, 2.0, 2.0, "bed"],
+	[-2.0, -4.0, 0.7, 0.8, "wardrobe"],
+	[4.6, -2.0, 2.0, 0.9, "kitchen_island"],
+	[5.2, -4.15, 4.5, 0.6, "kitchen_counter"],
+	[5.4, 1.7, 2.0, 0.8, "desk"],
 ]
 
-## Metall-Objekte [x, z, Breite(x), Tiefe(z)]: Kugeln prallen daran ab (Einfallswinkel =
-## Ausfallswinkel). Nur hier sind Schüsse "um die Ecke" möglich.
+## Metall-Objekte: Kugeln prallen daran ab (Einfallswinkel = Ausfallswinkel).
+## Nur hier sind Schüsse "um die Ecke" möglich.
 const METAL := [
-	[1.15, 0.9, 0.45, 1.1],   # Stahlspind im Flur  -> Bande ins Schlaf- oder Wohnzimmer
-	[-1.2, -0.6, 0.35, 1.2],  # Heizkörper im Flur  -> Bande in Küche oder Büro
-	[7.5, -0.4, 0.7, 0.7],    # Kühlschrank
-	[7.5, 3.5, 0.7, 1.5],     # Aktenschrank
-	[-7.6, -0.9, 0.5, 1.4],   # Tresor im Schlafzimmer
+	[1.15, 0.9, 0.45, 1.1, "locker"],          # Stahlspind im Flur  -> Bande ins Schlaf- oder Wohnzimmer
+	[-1.2, -0.6, 0.35, 1.2, "radiator"],       # Heizkörper im Flur  -> Bande in Küche oder Büro
+	[7.5, -0.4, 0.7, 0.7, "fridge"],           # Kühlschrank
+	[7.5, 3.5, 0.7, 1.5, "filing_cabinet"],    # Aktenschrank
+	[-7.6, -0.9, 0.5, 1.4, "safe"],            # Tresor im Schlafzimmer
 ]
-const METAL_COLOR := Color(0.55, 0.72, 0.85)
 
 ## Squad startet im Treppenhaus seitlich der Tür (außer Sicht), Blick nach -Z (yaw = PI).
 ## Reihenfolge = Zugreihenfolge: vorn Blendgranate, Mitte Schild, hinten Durchschuss.
@@ -166,11 +170,11 @@ func build() -> void:
 	for p: Vector3 in posts:
 		_place("wall_post", p)
 	for f in FURNITURE:
-		_add_prop("furniture", f, FURN_H)
+		_add_prop(f, FURN_H)
 	for c in CRATES:
-		_add_prop("crate", c, CRATE_H, false, Actor.LAYER_CRATE)
+		_add_prop(c, CRATE_H, false, Actor.LAYER_CRATE)
 	for m in METAL:
-		_add_prop("metal_cabinet", m, FURN_H, true)
+		_add_prop(m, FURN_H, true)
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-60, 35, 0)
@@ -230,13 +234,15 @@ func _lay_floor(x1: float, z1: float, x2: float, z2: float) -> void:
 		x += sx
 
 
-## Möbel, Kiste oder Metall-Objekt aus einer Tabellenzeile [x, z, Breite(x), Tiefe(z)]:
-## Kollisions-Quader plus der auf diese Maße gestreckte Baustein.
-func _add_prop(prop: String, e: Array, height: float, metal := false,
-		layer := Actor.LAYER_WORLD) -> void:
+## Möbel, Kiste oder Metall-Objekt aus einer Tabellenzeile
+## [x, z, Breite(x), Tiefe(z), Baustein, Drehung in Grad (optional)]:
+## Kollisions-Quader in Tabellengröße plus der Baustein in seiner eigenen Größe.
+func _add_prop(e: Array, height: float, metal := false, layer := Actor.LAYER_WORLD) -> void:
 	var size := Vector3(e[2], height, e[3])
 	_add_collider(Vector3(e[0], height * 0.5, e[1]), size, metal, layer)
-	_place(prop, Vector3(e[0], 0.0, e[1]), 0.0, size)
+	var prop: String = e[4]
+	var yaw_deg: float = e[5] if e.size() > 5 else 0.0
+	_place(prop, Vector3(e[0], 0.0, e[1]), deg_to_rad(yaw_deg))
 
 
 ## Baustein (Szene aus assets/props/) an eine Stelle setzen. Ursprung der Szene =
