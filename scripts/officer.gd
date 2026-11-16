@@ -7,13 +7,16 @@ extends Actor
 ## Jeder Officer hat eine Spezialfähigkeit auf der Aktionstaste (Leertaste):
 ##   "flash"  – wirft eine Blendgranate zum Mauszeiger
 ##   "shield" – hält, solange die Taste gedrückt ist, ein Schild vor sich
-##   "roll"   – Hechtrolle in Laufrichtung
+##   "pierce" – schaltet den Durchschuss-Modus um: Kugeln gehen durch Wände (nicht
+##              durch Metall), dafür ist die Streuung größer
+## Alle können einen Hechtsprung in Laufrichtung machen (eigene Taste, nicht mit Schild).
 
-const ROLE_NAMES := {"flash": "Blendgranate", "shield": "Schild", "roll": "Hechtrolle"}
+const ROLE_NAMES := {"flash": "Blendgranate", "shield": "Schild", "pierce": "Durchschuss"}
 const FLAG_SHIELD := 1
 const FLAG_ROLL := 2
 const FLAG_CROUCH := 4
 const FLAG_AIM := 8
+const FLAG_PIERCE := 16
 ## Schild als Strecke quer vor dem Officer (für die Kugel-Berechnung im GameManager).
 const SHIELD_DIST := 0.5
 const SHIELD_HALF_WIDTH := 0.7
@@ -34,6 +37,7 @@ const SHIELD_HALF_WIDTH := 0.7
 @export var roll_time := 0.42            # Dauer der Rolle
 @export var roll_cooldown := 1.5         # Spielsekunden bis zur nächsten Rolle
 @export var roll_recover := 0.4          # danach so lange maximale Streuung
+@export var pierce_spread_factor := 3.0  # Streuung im Durchschuss-Modus (Vielfaches)
 
 var role := ""
 var ammo := 12
@@ -43,6 +47,7 @@ var stability := 0.0
 var shield_up := false
 var aiming := false                       # Waffe angelegt
 var rolling := false
+var pierce_mode := false                  # Durchschuss-Modus an (nur Rolle "pierce")
 var crouched := false
 var ram: Node3D                          # Rammbock (nur im Intro sichtbar)
 
@@ -70,6 +75,7 @@ func apply_tweaks() -> void:
 	roll_time = Tweaks.num("player", "roll_time", 0.42)
 	roll_cooldown = Tweaks.num("player", "roll_cooldown", 1.5)
 	roll_recover = Tweaks.num("player", "roll_recover", 0.4)
+	pierce_spread_factor = Tweaks.num("player", "pierce_spread_factor", 3.0)
 
 
 func set_role(p_role: String) -> void:
@@ -81,9 +87,10 @@ func set_role(p_role: String) -> void:
 
 ## Einen Simulations-Tick lang steuern. aim_held: rechte Maustaste gehalten (Waffe
 ## anlegen). action_held/action_pressed: Aktionstaste (Leertaste, Spezialfähigkeit).
+## roll_pressed: Taste für den Hechtsprung.
 ## Liefert true, wenn in diesem Tick eine Blendgranate geworfen wird.
 func control_tick(move: Vector2, aim_point: Vector3, aim_held: bool, action_held: bool, action_pressed: bool,
-		crouch_toggle: bool, dt: float) -> bool:
+		crouch_toggle: bool, roll_pressed: bool, dt: float) -> bool:
 	if crouch_toggle:
 		set_crouched(not crouched)
 	# Zielrichtung folgt dem Mauszeiger verzögert (exponentielles Nachziehen).
@@ -101,12 +108,16 @@ func control_tick(move: Vector2, aim_point: Vector3, aim_held: bool, action_held
 		"shield":
 			# einmal oben bleibt es oben (das Heben beendet den Zug, siehe GameManager)
 			_set_shield(shield_up or action_held)
-		"roll":
-			if action_pressed and _roll_left <= 0.0 and _roll_cd <= 0.0:
-				_roll_left = roll_time
-				_roll_cd = roll_cooldown
-				_roll_dir = Vector3(move.x, 0.0, move.y) if move.length_squared() > 0.001 else forward()
-				_set_rolling(true)
+		"pierce":
+			if action_pressed:
+				pierce_mode = not pierce_mode
+
+	# Hechtsprung: für alle, aber nicht mit erhobenem Schild
+	if roll_pressed and can_roll():
+		_roll_left = roll_time
+		_roll_cd = roll_cooldown
+		_roll_dir = Vector3(move.x, 0.0, move.y).normalized() if move.length_squared() > 0.001 else forward()
+		_set_rolling(true)
 
 	# Waffe anlegen: nur mit gehaltener Ziel-Taste, nie mit erhobenem Schild oder während der Rolle
 	_set_aiming(aim_held and not shield_up and not rolling)
@@ -137,6 +148,10 @@ func control_tick(move: Vector2, aim_point: Vector3, aim_held: bool, action_held
 	return thrown
 
 
+func can_roll() -> bool:
+	return _roll_left <= 0.0 and _roll_cd <= 0.0 and not shield_up
+
+
 func can_fire() -> bool:
 	return ammo > 0 and aiming and not shield_up and not rolling
 
@@ -147,8 +162,10 @@ func roll_ready() -> float:
 
 
 ## Aktuelle Streuung als Halbwinkel in Radiant.
+## Im Durchschuss-Modus um pierce_spread_factor größer.
 func current_spread() -> float:
-	return deg_to_rad(lerpf(spread_max_deg, spread_min_deg, stability))
+	var s := deg_to_rad(lerpf(spread_max_deg, spread_min_deg, stability))
+	return s * pierce_spread_factor if pierce_mode else s
 
 
 ## Würfelt die tatsächliche Schussrichtung innerhalb der aktuellen Streuung.
@@ -169,7 +186,8 @@ func shield_side() -> Vector3:
 
 func flags() -> int:
 	return (FLAG_AIM if aiming else 0) | (FLAG_SHIELD if shield_up else 0) \
-			| (FLAG_ROLL if rolling else 0) | (FLAG_CROUCH if crouched else 0)
+			| (FLAG_ROLL if rolling else 0) | (FLAG_CROUCH if crouched else 0) \
+			| (FLAG_PIERCE if pierce_mode else 0)
 
 
 func apply_flags(f: int) -> void:
@@ -177,6 +195,7 @@ func apply_flags(f: int) -> void:
 	_set_shield(f & FLAG_SHIELD != 0)
 	_set_rolling(f & FLAG_ROLL != 0)
 	set_crouched(f & FLAG_CROUCH != 0)
+	pierce_mode = f & FLAG_PIERCE != 0
 
 
 func set_crouched(on: bool) -> void:
@@ -297,4 +316,5 @@ func set_state(s: Dictionary) -> void:
 	_set_aiming(false)
 	_set_shield(false)
 	_set_rolling(false)
+	pierce_mode = false
 	set_crouched(s.crouched and alive)

@@ -87,11 +87,11 @@ const METAL := [
 const METAL_COLOR := Color(0.55, 0.72, 0.85)
 
 ## Squad startet im Treppenhaus seitlich der Tür (außer Sicht), Blick nach -Z (yaw = PI).
-## Reihenfolge = Zugreihenfolge: vorn Blendgranate, Mitte Schild, hinten Hechtrolle.
+## Reihenfolge = Zugreihenfolge: vorn Blendgranate, Mitte Schild, hinten Durchschuss.
 const OFFICER_SPAWNS := [
 	Vector3(-1.4, 0, 5.2), Vector3(1.4, 0, 5.5), Vector3(-1.4, 0, 6.3),
 ]
-const OFFICER_ROLES := ["flash", "shield", "roll"]
+const OFFICER_ROLES := ["flash", "shield", "pierce"]
 
 ## Gegner: pro Gegner mehrere mögliche Startplätze (Position, Blickpunkt, optionale
 ## Patrouille). Bei jeder neuen Mission wird je einer ausgelost.

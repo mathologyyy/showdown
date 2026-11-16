@@ -6,6 +6,10 @@ extends CanvasLayer
 ## Layer 10 und PROCESS_MODE_ALWAYS, damit es bei pausiertem Baum weiterläuft.
 ## Alles per Code aufgebaut (Stil wie hud.gd).
 
+## „Zug beenden“ gewählt: der GameManager beendet den Zug des aktiven Officers
+## (Position halten). Bewusst nur hier im Menü, damit es nicht versehentlich passiert.
+signal end_turn_requested
+
 var is_open := false
 
 var _dim: ColorRect       # Vollbild-Abdunklung, fängt Mausklicks ab
@@ -48,6 +52,7 @@ func _ready() -> void:
 
 	_resume = _button(col, "Fortsetzen")
 	_resume.pressed.connect(close)
+	_button(col, "Zug beenden (Position halten)").pressed.connect(end_turn)
 	_button(col, "Mission neu starten").pressed.connect(restart)
 	_button(col, "Beenden").pressed.connect(quit_game)
 
@@ -114,6 +119,12 @@ func toggle() -> void:
 		close()
 	else:
 		open()
+
+
+## Zug des aktiven Officers ohne Schuss beenden und weiterspielen.
+func end_turn() -> void:
+	close()
+	end_turn_requested.emit()
 
 
 ## Mission neu starten: Szene neu laden (wie Taste N im Spiel).

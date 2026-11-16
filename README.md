@@ -18,18 +18,28 @@ Oder direkt im Terminal: `godot --path .`
 | Maus | Rechter Stick | Blickrichtung (folgt verzögert). Am Controller schaut der Officer bei ruhendem rechten Stick in Laufrichtung. |
 | Rechte Maustaste (halten) | LT oder LB (halten) | Waffe anlegen: erst dann gibt es Laser, Streubogen und Schuss; währenddessen läuft die Zeitlupe |
 | Linksklick | RT oder RB | Schießen, nur mit angelegter Waffe (beendet den Zug) |
-| Leertaste | A | Aktionstaste: Spezialfähigkeit des Officers (Granate und Schild beenden den Zug, die Rolle nicht) |
+| Leertaste | A | Aktionstaste: Spezialfähigkeit des Officers (Granate und Schild beenden den Zug) |
+| Umschalttaste | Y | Hechtsprung (alle Officer) |
 | C / Strg | B | Ducken / Aufstehen (umschalten) |
 | E | X | Tür öffnen (in Reichweite erscheint ein Hinweis an der Tür) |
-| F / Enter | Y | Position halten (Zug ohne Schuss beenden) |
 | 1 / 2 oder Mausrad | Steuerkreuz ↓ / ↑ | Zeitlupe langsamer / schneller |
 | R | A | nach Fehlschlag: Durchlauf wiederholen · im Ergebnis: Replay erneut |
 | N | Y | neue Mission (nach Fehlschlag oder Ergebnis) |
-| Esc | Start | Pausemenü (Fortsetzen / Mission neu starten / Beenden) |
+| Esc | Start | Pausemenü (Fortsetzen / Zug beenden / Mission neu starten / Beenden) |
 
-Das Spiel schaltet automatisch auf das zuletzt benutzte Eingabegerät um; die Hinweise im HUD
-zeigen dann die passenden Tasten. Mit dem Controller bestimmt die Auslenkung des rechten Sticks
-die Wurfweite der Blendgranate (ruht er: 5 m in Blickrichtung).
+Die Controller-Tasten sind nach ihrer **Lage** benannt wie beim Xbox-Pad (A unten, B rechts,
+X links, Y oben). Das Spiel erkennt am Gerätenamen, ob ein Xbox-, Switch-Pro- oder
+PlayStation-Controller benutzt wird, und zeigt im HUD die Beschriftung, die dort an dieser
+Stelle steht (Switch Pro: B / A / Y / X, ZL / L, ZR / R, +). Es schaltet automatisch auf das
+zuletzt benutzte Eingabegerät um.
+
+**Zielen mit dem Controller:** Die Richtung des rechten Sticks ist die Blickrichtung. Nach dem
+Loslassen bleibt die zuletzt gehaltene Richtung stehen; Laufen dreht den Officer nicht. Die
+Auslenkung bestimmt die Wurfweite der Blendgranate.
+
+**Zug freiwillig beenden** („Position halten“) liegt vorübergehend auf keiner Taste mehr, weil
+man sie zu leicht versehentlich drückt. Im Pausemenü gibt es dafür „Zug beenden“. Wieder
+einschalten: `HOLD_KEY_ENABLED` oben in `scripts/game_manager.gd` (dann F / Enter).
 
 ## Das Squad
 
@@ -37,7 +47,11 @@ die Wurfweite der Blendgranate (ruht er: 5 m in Blickrichtung).
 |---|---|
 | 1 · vorn | Startet geduckt. **Blendgranate** (2 Stück): fliegt im Bogen zum Mauszeiger (höchstens 8 m), springt nach dem Aufkommen weiter, prallt an Wänden und Möbeln ab und zündet 0,6 Spielsekunden nach dem ersten Aufkommen. Der Wurf beendet den Zug. Blendet Gegner im Umkreis von 4,5 m mit Sichtlinie zur Granate für 2,5 Spielsekunden: sie sehen, zielen und schießen nicht. Das Team ist immun. |
 | 2 · Mitte | **Schild**: das Heben beendet den Zug, danach bleibt es für den Rest des Durchlaufs oben. Es fängt Kugeln von vorn ab (etwa 110°) und deckt Kollegen dahinter. Mit erhobenem Schild läuft er langsamer und kann nicht schießen. |
-| 3 · hinten | Rammt im Intro die Eingangstür auf. **Hechtrolle**: schneller Satz in Laufrichtung (doppeltes Lauftempo), nicht lenkbar, weiterhin treffbar. Danach kurz maximale Streuung, 1,5 Spielsekunden Abklingzeit. |
+| 3 · hinten | Rammt im Intro die Eingangstür auf. **Durchschuss**: die Aktionstaste schaltet den Modus an und aus. Im Modus gehen seine Kugeln durch bis zu zwei Wände, Möbel oder Türen, die Streuung ist dafür dreimal so groß. Metall-Objekte stoppen die Kugel bzw. lassen sie abprallen. Der Laser zeigt die Bahn durch die Wand. |
+
+**Hechtsprung (alle):** schneller Satz in Laufrichtung (doppeltes Lauftempo), nicht lenkbar,
+weiterhin treffbar, nicht mit erhobenem Schild. Danach kurz maximale Streuung, 1,5 Spielsekunden
+Abklingzeit. Figuren blockieren sich gegenseitig nicht, man springt also über geduckte Kollegen hinweg.
 
 **Ducken:** Geduckt ist man 30 % langsamer. Stehende Kollegen schießen über Geduckte hinweg.
 Hinter den hellbraunen **Kisten** ist ein Geduckter aus dieser Richtung nicht zu treffen;
@@ -57,6 +71,8 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
   mit ◀◀-Symbol, VHS-Verzerrung und entsättigtem Bild.
 - Das normale Spiel läuft in **Echtzeit**; die Zeitlupe gilt nur, solange die Waffe angelegt ist
   (umschaltbar in `gameplay_tweaks.cfg`).
+- „Echtzeit“ (Vorlauf und Abschluss-Replay) läuft mit `realtime_speed` aus `gameplay_tweaks.cfg`,
+  derzeit doppelt so schnell wie echte Echtzeit; die Zeitlupe mit `slowdown_speed` (derzeit 5 %).
 - Ab dem zweiten Zug läuft das bisher Aufgezeichnete zuerst in **Echtzeit** ab. Kurz bevor
   der Moment erreicht ist, an dem der vorige Zug endete, bremst die Zeit auf Zeitlupe und
   du übernimmst den nächsten Officer. Die Züge bauen also zeitlich aufeinander auf. Im Vorlauf
@@ -95,7 +111,7 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 
 - Leiste oben: aktueller Abschnitt und Status der Officer (aktiv, fertig, wartet, Ausfall).
 - Unten links: ein Icon pro Officer. Mit Blendgranate in der Hand, hinter dem Schild, und
-  der dünne Große im Laufschritt (der Schnelle mit der Hechtrolle). Der gerade gespielte ist
+  der dünne Große im Laufschritt (der mit dem Durchschuss). Der gerade gespielte ist
   hell und farbig umrandet, Ausfälle sind durchgestrichen. Darüber Munition und Aim-Stabilität.
 - Oben links: kleine Übersicht der Tastenbelegung (während des Spielens).
 - Aktiver Officer: pulsierender Bodenring und Pfeil über dem Kopf.
@@ -155,10 +171,10 @@ mit Kommentar). Sie wird beim Start und bei jeder neuen Mission (**N**) neu gele
 
 | Sektion | Inhalt |
 |---|---|
-| `[tempo]` | Normales Tempo, Slowdown-Tempo, Schalter „Slowdown nur beim Zielen“, Übergangszeit, Rückspulgeschwindigkeit (mit Mindest- und Höchstdauer), Tempo der Auswertung |
-| `[player]` | Lauftempo (auch geduckt, mit Schild, mit angelegter Waffe), Ziel-Rotation, Aim-Stabilität, Streuung, Munition, Granaten, Hechtrolle |
+| `[tempo]` | Echtzeit-Tempo (Vorlauf, Replay), Slowdown-Tempo, normales Spieltempo, Schalter „Slowdown nur beim Zielen“, Übergangszeit, Rückspulgeschwindigkeit (mit Mindest- und Höchstdauer), Tempo der Auswertung |
+| `[player]` | Lauftempo (auch geduckt, mit Schild, mit angelegter Waffe), Ziel-Rotation, Aim-Stabilität, Streuung, Munition, Granaten, Hechtsprung, Streuung im Durchschuss |
 | `[enemy]` | Reaktionszeit, Ziel-Tempo, Ziel-Genauigkeit, Zeit zum Ziehen der Waffe, Feuerrate, Sicht- und Hörweite, Lauftempo, Deckung, Geisel-Frist |
-| `[weapons]` | Kugeltempo, Granate (Wurfweite, Tempo, Zünder, Blendradius, Blenddauer), Zahl der Abpraller |
+| `[weapons]` | Kugeltempo, Granate (Wurfweite, Tempo, Zünder, Blendradius, Blenddauer), Zahl der Abpraller, Zahl der durchschlagenen Wände |
 | `[mission]` | Schalter `fail_on_hostage_hit`: scheitert die Mission, wenn eine Geisel getroffen wird? |
 
 Weiterhin im Code:

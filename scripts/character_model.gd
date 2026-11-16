@@ -35,6 +35,8 @@ var _rolling := false
 var _crouched := false
 var _roll_angle := 0.0
 
+const ROLL_HOP := 0.55           # Scheitelhöhe des Hechtsprungs (m)
+const ROLL_HOP_TURNS := 0.9      # nach so vielen Überschlägen ist die Figur wieder am Boden
 const ROLL_TURNS_PER_SEC := 2.2  # Überschläge pro Spielsekunde während der Hechtrolle
 const ROLL_PIVOT := 0.55         # Höhe des Drehpunkts
 
@@ -140,7 +142,10 @@ func set_rolling(on: bool) -> void:
 func _apply_roll() -> void:
 	var b := Basis(Vector3.RIGHT, _roll_angle)
 	var pivot := Vector3(0.0, ROLL_PIVOT, 0.0)
-	_inst.transform = Transform3D(b.scaled(Vector3.ONE * MODEL_SCALE), pivot - b * pivot)
+	# Hechtsprung: die Figur hebt im Bogen ab (rein optisch), so fliegt sie sichtbar
+	# über geduckte Kollegen hinweg
+	var hop := ROLL_HOP * sin(clampf(_roll_angle / (TAU * ROLL_HOP_TURNS), 0.0, 1.0) * PI)
+	_inst.transform = Transform3D(b.scaled(Vector3.ONE * MODEL_SCALE), pivot - b * pivot + Vector3(0.0, hop, 0.0))
 
 
 ## Geduckte Haltung (auch in Bewegung: das Kit hat keinen Schleich-Gang).

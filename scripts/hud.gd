@@ -14,26 +14,31 @@ const BAR_HEIGHT := 70.0
 const TAKEOVER_BAR_W := 320.0
 const TAKEOVER_BAR_H := 8.0
 const ICON_MARGIN := 16.0         # Abstand der Officer-Icons zum unteren Bildrand
-## Tastenbelegung (oben links): [Tastatur/Maus, Controller, Wirkung]
+## Tastenbelegung (oben links): [Tastatur/Maus, Controller, Wirkung]. Die Controller-Spalte
+## enthält Platzhalter {a} {b} {x} {y} {lt} {lb} {rt} {rb} {start} {title}, die
+## set_pad_labels() je nach Bauart (Xbox, Switch Pro, …) ersetzt.
 const KEY_HELP := [
-	["TASTATUR", "CONTROLLER", ""],
+	["TASTATUR", "{title}", ""],
 	["W A S D", "Linker Stick", "Bewegen"],
 	["Maus", "Rechter Stick", "Zielen"],
-	["Rechte Maustaste", "LT / LB", "Waffe anlegen (halten)"],
-	["Linksklick", "RT / RB", "Schießen (nur angelegt)"],
-	["Leertaste", "A", "Spezialfähigkeit"],
-	["C / Strg", "B", "Ducken"],
-	["E", "X", "Tür öffnen"],
-	["F / Enter", "Y", "Position halten"],
+	["Rechte Maustaste", "{lt} / {lb}", "Waffe anlegen (halten)"],
+	["Linksklick", "{rt} / {rb}", "Schießen (nur angelegt)"],
+	["Leertaste", "{a}", "Spezialfähigkeit"],
+	["Umschalt", "{y}", "Hechtsprung"],
+	["C / Strg", "{b}", "Ducken"],
+	["E", "{x}", "Tür öffnen"],
 	["1 / 2 / Mausrad", "Steuerkreuz ↓ / ↑", "Zeitlupe"],
-	["Esc", "Start", "Pause"],
+	["Esc", "{start}", "Pause · Zug beenden"],
 ]
+## Beschriftung, solange kein Controller erkannt ist (Xbox-Lage).
+const PAD_DEFAULT := {"title": "CONTROLLER", "a": "A", "b": "B", "x": "X", "y": "Y",
+	"lt": "LT", "lb": "LB", "rt": "RT", "rb": "RB", "start": "Start"}
 
 
 ## Stilisiertes Icon eines Officers (unten links). Die Silhouette verrät die Rolle:
 ##  "flash"  – normale Figur, hält eine Blendgranate hoch
 ##  "shield" – stämmige Figur hinter einem großen Schild
-##  "roll"   – dünne, große Figur im Laufschritt (der schnelle, agile Officer)
+##  "pierce" – dünne, große Figur im Laufschritt (der schnelle, agile Officer)
 ## Zustand: "active" (wird gerade gespielt) hell mit farbigem Rahmen, "dead"
 ## ausgegraut und durchgestrichen, alles andere abgedunkelt.
 class OfficerIcon extends Control:
@@ -120,7 +125,7 @@ class OfficerIcon extends Control:
 				var plate := Color(0.2, 0.25, 0.34) if not dead else Color(0.25, 0.25, 0.27)
 				_rrect(Rect2(cx - 6, 38, 34, 58), plate, 5, plate.lightened(0.45), 2)
 				draw_rect(Rect2(cx + 2, 47, 18, 5), visor)
-			"roll":
+			"pierce":
 				# Tempo-Striche hinter der Figur
 				var streak := Color(text_col, 0.55)
 				draw_line(Vector2(cx - 33, 42), Vector2(cx - 17, 42), streak, 2.0)
@@ -187,6 +192,7 @@ var _stats: Control
 var _clock: Label
 var _hint: PanelContainer         # Tastenbelegung, klein oben links
 var _icons: Array = []            # OfficerIcon je Officer, unten links
+var _pad_cells: Array = []        # Controller-Spalte der Tastenbelegung: [Label, Vorlage]
 var _panel: PanelContainer
 var _panel_label: Label
 
@@ -380,6 +386,9 @@ func _ready() -> void:
 			var kl := _label(keys, 12, tint)
 			kl.add_theme_constant_override("outline_size", 3)
 			kl.text = KEY_HELP[r][col]
+			if col == 1:
+				_pad_cells.append([kl, KEY_HELP[r][col]])
+	set_pad_labels(PAD_DEFAULT)
 
 	# --- Tafel in der Mitte (Fehlschlag, Ergebnis) ---
 	_panel = PanelContainer.new()
@@ -554,6 +563,15 @@ func set_takeover_timer(seconds_left: float, total: float, color: Color) -> void
 	var frac := clampf(1.0 - seconds_left / maxf(total, 0.001), 0.0, 1.0)
 	_takeover_fill.color = color
 	_takeover_fill.offset_right = TAKEOVER_BAR_W * frac
+
+
+## Controller-Spalte der Tastenbelegung beschriften. labels: Platzhalter -> Text,
+## siehe KEY_HELP (z. B. {"a": "B", "lt": "ZL", "title": "SWITCH PRO", …}).
+func set_pad_labels(labels: Dictionary) -> void:
+	for cell in _pad_cells:
+		var kl: Label = cell[0]
+		var template: String = cell[1]
+		kl.text = template.format(labels)
 
 
 func set_hint_visible(on: bool) -> void:

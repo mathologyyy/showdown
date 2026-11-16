@@ -10,7 +10,8 @@ extends Node3D
 ## und der Spieler übernimmt den nächsten Officer ("Übernahme"). Vor jeder Übernahme
 ## läuft ein Countdown 3 – 2 – 1 – GO GO GO.
 ##
-## Spezialfähigkeiten (Leertaste): Blendgranate, Schild, Hechtrolle – siehe officer.gd.
+## Spezialfähigkeiten (Leertaste): Blendgranate, Schild, Durchschuss – siehe officer.gd.
+## Alle Officer können einen Hechtsprung machen (Umschalttaste).
 ## Rechte Maustaste halten legt die Waffe an (Laser, Streubogen, Schießen).
 ## Kugeln prallen an Metall-Objekten (Level.METAL) ab.
 ##
@@ -30,7 +31,20 @@ const GRENADE_ENDS_TURN := true       # Granatenwurf beendet den Zug (sie fliegt
 const OFFICER_COLORS := [
 	Color(0.15, 0.40, 1.00), Color(0.10, 0.75, 0.55), Color(0.55, 0.35, 1.00),
 ]
-const ROLE_SHORT := {"flash": "Blend", "shield": "Schild", "roll": "Rolle"}
+const ROLE_SHORT := {"flash": "Blend", "shield": "Schild", "pierce": "Durchschuss"}
+## "Position halten" (Zug freiwillig beenden) per Taste. Vorübergehend aus, weil man es
+## zu leicht versehentlich drückt; im Pausemenü gibt es dafür weiterhin "Zug beenden".
+const HOLD_KEY_ENABLED := false
+## Beschriftung der Controller-Tasten je Bauart. Schlüssel = Lage wie bei Godot/Xbox:
+## a unten, b rechts, x links, y oben. Die Funktion hängt an der Lage, nicht am Buchstaben.
+const PAD_LABELS := {
+	"xbox": {"title": "XBOX", "a": "A", "b": "B", "x": "X", "y": "Y",
+		"lt": "LT", "lb": "LB", "rt": "RT", "rb": "RB", "start": "Start"},
+	"switch": {"title": "SWITCH PRO", "a": "B", "b": "A", "x": "Y", "y": "X",
+		"lt": "ZL", "lb": "L", "rt": "ZR", "rb": "R", "start": "+"},
+	"ps": {"title": "PLAYSTATION", "a": "Kreuz", "b": "Kreis", "x": "Quadrat", "y": "Dreieck",
+		"lt": "L2", "lb": "L1", "rt": "R2", "rb": "R1", "start": "Options"},
+}
 const ENEMY_COLOR := Color(0.75, 0.08, 0.06)
 const HOSTAGE_COLOR := Color(0.95, 0.80, 0.15)
 const LASER_OFFICER := Color(1.0, 0.05, 0.05, 0.9)
@@ -74,6 +88,7 @@ const INTRO_SECONDS := 2.4          # Rammbock-Intro
 const CROUCH_COVER_REACH := 1.6     # so nah muss die Kiste vor dem Geduckten stehen
 var FLASH_RADIUS: float = 4.5       # Blendradius (nur mit Sichtlinie zur Granate); aus Tweaks "weapons"
 var FLASH_SECONDS: float = 2.5      # so lange sind Gegner geblendet (Spielzeit); aus Tweaks "weapons"
+var PIERCE_MAX_WALLS: int = 2       # Durchschuss: durch so viele Wände/Möbel/Türen geht eine Kugel; aus Tweaks "weapons"
 var MAX_BOUNCES: int = 2            # so oft prallt eine Kugel höchstens an Metall ab; aus Tweaks "weapons"
 var FAIL_ON_HOSTAGE_HIT: bool = true # Mission scheitert, sobald eine Geisel getroffen wird; aus Tweaks "mission"
 const DOOR_REACH := 1.7             # so nah muss ein Officer an der Tür stehen, um sie zu öffnen
@@ -86,7 +101,10 @@ const STAR_EXTRA_SHOTS := 2         # erlaubte Schüsse = Zahl der Gegner + so v
 const STAR_PASSES := 4
 ## Controller: linker Stick bewegt, rechter Stick zielt, LT/LB legt die Waffe an, RT/RB schießt.
 const PAD_MOVE_DEADZONE := 0.25
-const PAD_AIM_DEADZONE := 0.3
+const PAD_AIM_DEADZONE := 0.4
+## Fällt die Auslenkung des Ziel-Sticks pro Frame um mehr als das, wird er gerade
+## losgelassen: die Richtung beim Zurückschnappen zählt dann nicht mehr.
+const PAD_RELEASE_DROP := 0.04
 const PAD_TRIGGER := 0.5            # ab dieser Auslenkung gilt ein Trigger (LT/RT) als gedrückt
 const PAD_THROW_DEFAULT := 5.0      # Wurfweite der Granate (m), solange der rechte Stick ruht
 const CAM_PITCH_DEG := 60.0
@@ -160,6 +178,9 @@ var _pad_dev := 0                    # Gerätenummer dieses Controllers
 var _pad_fire_down := false          # RT über der Schwelle (ein Schuss pro Durchdrücken)
 var _pad_aim_dir := Vector3.ZERO     # letzte Zielrichtung per Stick (ZERO = Blickrichtung des Officers)
 var _pad_aim_dist := PAD_THROW_DEFAULT
+var _pad_prev_deflect := 0.0         # Auslenkung des Ziel-Sticks im vorigen Frame
+var _pad_kind := "xbox"              # Bauart des Controllers: Schlüssel in PAD_LABELS
+var _roll_req := false               # Hechtsprung-Taste gedrückt
 var _settle := 0                     # Ticks Pause nach einem Reset (Physik übernimmt Teleports)
 var _break_left := 0.0
 var _last_usec := 0
@@ -181,6 +202,7 @@ func _ready() -> void:
 	FLASH_RADIUS = Tweaks.num("weapons", "flash_radius", 4.5)
 	FLASH_SECONDS = Tweaks.num("weapons", "flash_seconds", 2.5)
 	MAX_BOUNCES = Tweaks.whole("weapons", "max_bounces", 2)
+	PIERCE_MAX_WALLS = Tweaks.whole("weapons", "pierce_max_walls", 2)
 	FAIL_ON_HOSTAGE_HIT = Tweaks.flag("mission", "fail_on_hostage_hit", true)
 	RESOLVE_TIME_SCALE = Tweaks.num("tempo", "resolve_speed", 0.6)
 	REWIND_SPEED = Tweaks.num("tempo", "rewind_speed", 4.0)
@@ -233,6 +255,10 @@ func _ready() -> void:
 	add_child(_hud)
 	_pause = PauseMenu.new()              # CanvasLayer 10: Pausemenü
 	add_child(_pause)
+	_pause.end_turn_requested.connect(request_hold)
+	# Bauart eines schon angeschlossenen Controllers für die Tastenanzeige ermitteln
+	var pads := Input.get_connected_joypads()
+	_set_pad_kind(pads[0] if not pads.is_empty() else -1)
 
 	# Tastaturfokus sofort holen (beim Start aus dem Editor sonst erst nach einem Klick)
 	get_window().grab_focus()
@@ -372,6 +398,7 @@ func _restore(cp: Dictionary) -> void:
 		doors[i].set_open(cp.doors[i], true)
 	_door_req = false
 	_crouch_req = false
+	_roll_req = false
 	_cut = {}
 	tick = 0
 	_settle = 2
@@ -420,11 +447,11 @@ func _start_turn() -> void:
 	_count_left = -1.0
 	_count_digit = 0
 	# Während des Countdowns vergeht (wegen des Abbremsens) so viel Spielzeit:
-	var ramp_ticks := int(COUNT_TOTAL * (1.0 + TimeControl.rest_scale()) * 0.5 * TimeControl.SIM_HZ)
+	var ramp_ticks := int(COUNT_TOTAL * (TimeControl.realtime_speed + TimeControl.rest_scale()) * 0.5 * TimeControl.SIM_HZ)
 	_count_start = maxi(0, _takeover_tick - ramp_ticks)
-	# Der Vorlauf läuft mit override_scale 1.0 (Echtzeit), der Countdown dauert
+	# Der Vorlauf läuft im Echtzeit-Tempo (realtime_speed), der Countdown dauert
 	# COUNT_TOTAL echte Sekunden – zusammen die Gesamtdauer bis zur Übernahme
-	_lead_total = float(_count_start) / TimeControl.SIM_HZ + COUNT_TOTAL
+	_lead_total = float(_count_start) / (TimeControl.SIM_HZ * TimeControl.realtime_speed) + COUNT_TOTAL
 	_hud.set_panel_text("")
 	_hud.set_freeze(false)
 	_hud.hide_card()
@@ -462,7 +489,7 @@ func _track_pos(tr: RoundSystem.Track, t: int) -> Vector3:
 ## Übernahme-Tick und wartet dort, bis der Countdown bei "GO GO GO" angekommen ist.
 func _update_countdown(real_dt: float) -> void:
 	if _count_left < 0.0:
-		TimeControl.override_scale = 1.0
+		TimeControl.override_scale = TimeControl.realtime_speed
 		if tick >= _count_start and _settle == 0:
 			_count_left = COUNT_TOTAL
 			if _takeover_tick > 0 and TimeControl.rest_scale() < 0.95:
@@ -481,7 +508,7 @@ func _update_countdown(real_dt: float) -> void:
 		_hud.hide_card()
 		_hud.show_big(str(digit), COL_GO, COUNT_STEP)
 	var k := 1.0 - _count_left / COUNT_TOTAL
-	TimeControl.override_scale = lerpf(1.0, TimeControl.rest_scale(), smoothstep(0.0, 1.0, k))
+	TimeControl.override_scale = lerpf(TimeControl.realtime_speed, TimeControl.rest_scale(), smoothstep(0.0, 1.0, k))
 
 
 ## Der Spieler bekommt die Kontrolle über den aktiven Officer.
@@ -499,6 +526,7 @@ func _take_control() -> void:
 	_go_t = 0.0
 	_pad_aim_dir = Vector3.ZERO
 	_pad_aim_dist = PAD_THROW_DEFAULT
+	_roll_req = false
 	if _solo:
 		_hud.show_card("LETZTER OFFICER", "Keine Runden mehr  ·  ab jetzt läuft alles ohne Zurückspulen durch",
 				COL_DANGER, 3.0)
@@ -638,7 +666,7 @@ func _fail(reason: String) -> void:
 	_hud.hide_card()
 	_hud.set_letterbox(false)
 	_hud.set_rewind(false)
-	_hud.set_panel_text("MISSION FAILED\n\n%s\n\n[R / A] Durchlauf wiederholen      [N / Y] Neue Mission" % reason)
+	_hud.set_panel_text("MISSION FAILED\n\n%s\n\n[R / %s] Durchlauf wiederholen      [N / %s] Neue Mission" % [reason, _pad_lbl("a"), _pad_lbl("y")])
 
 
 ## Abschluss-Replay: die Timeline aller Auswertungen in Echtzeit, ohne Sichtkegel.
@@ -651,7 +679,7 @@ func _start_final_replay() -> void:
 	_bullets.clear()
 	_grenades.clear()
 	_fx.clear()
-	TimeControl.override_scale = 1.0
+	TimeControl.override_scale = TimeControl.realtime_speed
 	_vision.enabled = false
 	for i in doors.size():
 		doors[i].set_open(_initial_doors[i], true)
@@ -691,10 +719,10 @@ func _show_results() -> void:
 			+ "Schüsse Gegner: %d\n"
 			+ "Geiseln gerettet: %d / %d\n"
 			+ "Officer einsatzfähig: %d / %d\n\n"
-			+ "[R / A] Replay erneut      [N / Y] Neue Mission") % [
+			+ "[R / %s] Replay erneut      [N / %s] Neue Mission") % [
 			stars.strip_edges(), lines, enemy_shots,
 			_count_alive(hostages), hostages.size(),
-			_count_alive(officers), officers.size()])
+			_count_alive(officers), officers.size(), _pad_lbl("a"), _pad_lbl("y")])
 
 
 # =============================================================================
@@ -736,8 +764,10 @@ func _sim_tick(dt: float) -> void:
 						_open_door(di)
 				var crouch := _crouch_req
 				_crouch_req = false
+				var roll: bool = _roll_req or inp.get("roll", false)
+				_roll_req = false
 				var shield_before := o.shield_up
-				var thrown := o.control_tick(inp.move, inp.aim, inp.get("aim_hold", false), held, pressed, crouch, dt)
+				var thrown := o.control_tick(inp.move, inp.aim, inp.get("aim_hold", false), held, pressed, crouch, roll, dt)
 				_track.add_frame(o)
 				if thrown:
 					var target := _grenade_target(o, inp.aim)
@@ -771,10 +801,11 @@ func _sim_tick(dt: float) -> void:
 				if o.can_fire():
 					o.ammo -= 1
 					var dir := o.roll_shot_dir(_rng)
+					var pierce := o.pierce_mode       # Durchschuss: Kugel geht durch Wände
 					if _solo:
-						_fire_bullet(o, dir)  # ohne Runden fliegt die Kugel sofort
+						_fire_bullet(o, dir, false, pierce)  # ohne Runden fliegt die Kugel sofort
 					else:
-						_track.shots.append({"tick": tick, "dir": dir})
+						_track.shots.append({"tick": tick, "dir": dir, "pierce": pierce})
 						_shot_fx(o, dir)
 						# Nahaufnahme: Mündungsfeuer und die Kugel auf ihrem ersten Meter
 						_cut = {"kind": "shot", "from": o.eye(), "dir": dir}
@@ -802,7 +833,7 @@ func _sim_tick(dt: float) -> void:
 			for s in tr.shots:
 				if s.tick == tick and o.ammo > 0:
 					o.ammo -= 1
-					_fire_bullet(o, s.dir)
+					_fire_bullet(o, s.dir, false, s.get("pierce", false))
 
 	# --- Gegner: jede Runde live simuliert ---
 	for e in enemies:
@@ -847,7 +878,7 @@ func _check_solo_end() -> void:
 		if active.alive and not _hostage_lost() and _count_alive(enemies) > 0:
 			return
 		_solo_end = tick + SOLO_TAIL_TICKS
-		TimeControl.override_scale = 1.0
+		TimeControl.override_scale = TimeControl.realtime_speed
 	if tick < _solo_end or not _bullets.is_empty() or not _grenades.is_empty():
 		return
 	if not active.alive:
@@ -894,7 +925,9 @@ func enemy_fire(e: Enemy, dir: Vector3, execute := false) -> void:
 ## Echte Kugel mit Flugzeit abfeuern.
 ## Gegnerkugeln fliegen an Geiseln vorbei (er schießt über sein "Schild" hinweg),
 ## außer bei der Hinrichtung (hit_hostages).
-func _fire_bullet(shooter: Actor, dir: Vector3, hit_hostages := false) -> void:
+## pierce: Durchschuss – die Kugel geht durch bis zu PIERCE_MAX_WALLS Wände, Möbel oder
+## Türen. Metall stoppt sie (bzw. lässt sie abprallen) wie jede andere Kugel.
+func _fire_bullet(shooter: Actor, dir: Vector3, hit_hostages := false, pierce := false) -> void:
 	var by_enemy := shooter is Enemy
 	# high: aus dem Stand geschossen – fliegt über Kisten und über geduckte Kollegen hinweg
 	var high := not (shooter is Officer and (shooter as Officer).crouched)
@@ -904,7 +937,8 @@ func _fire_bullet(shooter: Actor, dir: Vector3, hit_hostages := false) -> void:
 	var b := {"pos": shooter.eye(), "prev": shooter.eye(), "dir": dir, "skip": [shooter.get_rid()],
 		"origin": shooter.eye(), "mask": mask, "high": high,
 		"enemy": by_enemy, "left": SHOT_RANGE, "leg": SHOT_RANGE, "bounces": 0,
-		"ghost": false, "hit_actor": false, "rec": null}
+		"ghost": false, "hit_actor": false, "rec": null,
+		"pierce": PIERCE_MAX_WALLS if pierce else 0}
 	if _recording():
 		# fürs Abschluss-Replay merken; Flugstrecke und Trefferart werden beim Einschlag ergänzt
 		var rec := {"tick": tick, "who": _all.find(shooter), "from": b.pos, "dir": dir,
@@ -989,8 +1023,16 @@ func _step_bullets(dt: float) -> void:
 						.distance_to(e.eye()) < NEAR_MISS:
 					e.suppress(b.origin)
 		var hit := _trace(b.pos, to, b.skip, b.mask)
-		while hit and hit.collider is Officer and _passes_over(b, hit):
-			b.skip.append(hit.collider.get_rid())
+		while hit:
+			if hit.collider is Officer and _passes_over(b, hit):
+				b.skip.append(hit.collider.get_rid())
+			elif b.pierce > 0 and _pierceable(hit.collider):
+				# Durchschuss: Wand/Möbel/Tür wird durchschlagen
+				b.pierce -= 1
+				b.skip.append(hit.collider.get_rid())
+				_impact(hit.position, false)
+			else:
+				break
 			hit = _trace(b.pos, to, b.skip, b.mask)
 		if hit:
 			var on_actor: bool = hit.collider is Actor
@@ -1042,6 +1084,12 @@ func _passes_over(b: Dictionary, hit: Dictionary) -> bool:
 		return true
 	var p := Vector3(hit.position.x, Level.CRATE_H * 0.5, hit.position.z)
 	return not _ray(p, p - b.dir * CROUCH_COVER_REACH, Actor.LAYER_CRATE).is_empty()
+
+
+## Kann eine Durchschuss-Kugel dieses Hindernis durchschlagen? Alles aus der Welt
+## (Wände, Möbel, Kisten, Türen) außer Metall; Figuren und Schilde nicht.
+func _pierceable(collider: Object) -> bool:
+	return collider != null and not (collider is Actor) and not collider.get_meta("metal", false)
 
 
 func _is_metal(collider: Object) -> bool:
@@ -1265,7 +1313,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_SPACE:
 				request_action()
 			KEY_F, KEY_ENTER:
-				request_hold()
+				if HOLD_KEY_ENABLED:
+					request_hold()
+			KEY_SHIFT:
+				request_roll()
 			KEY_E:
 				request_door()
 			KEY_C, KEY_CTRL:
@@ -1281,7 +1332,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			# ESC gehört dem Pausemenü (scripts/pause_menu.gd)
 
 
-## Controller-Taste gedrückt. A und Y haben nach Fehlschlag/Ergebnis die Rolle von R und N.
+## Controller-Taste gedrückt (Namen nach Lage wie beim Xbox-Pad: A unten, Y oben).
+## A und Y haben nach Fehlschlag/Ergebnis die Rolle von R und N.
 ## Start gehört dem Pausemenü (scripts/pause_menu.gd).
 func _pad_button(button: int) -> void:
 	var ended := phase == Phase.FAILED or phase == Phase.RESULTS
@@ -1301,7 +1353,7 @@ func _pad_button(button: int) -> void:
 			if ended:
 				_new_mission()
 			else:
-				request_hold()
+				request_roll()
 		JOY_BUTTON_DPAD_UP:
 			TimeControl.adjust(0.01)
 		JOY_BUTTON_DPAD_DOWN:
@@ -1309,8 +1361,29 @@ func _pad_button(button: int) -> void:
 
 
 func _use_pad(device: int) -> void:
+	if device != _pad_dev or not _pad_active:
+		_set_pad_kind(device)
 	_pad_active = true
 	_pad_dev = device
+
+
+## Bauart des Controllers am Gerätenamen erkennen und die Tastenanzeige im HUD anpassen.
+## Unbekannte Controller (und device < 0 = keiner angeschlossen) gelten als Xbox-Pad.
+func _set_pad_kind(device: int) -> void:
+	var n := Input.get_joy_name(device).to_lower() if device >= 0 else ""
+	_pad_kind = "xbox"
+	for word: String in ["nintendo", "switch", "pro controller", "joy-con", "joycon"]:
+		if n.contains(word):
+			_pad_kind = "switch"
+	for word: String in ["playstation", "dualsense", "dualshock", "sony", "ps4", "ps5"]:
+		if n.contains(word):
+			_pad_kind = "ps"
+	_hud.set_pad_labels(PAD_LABELS[_pad_kind])
+
+
+## Beschriftung einer Controller-Taste für die erkannte Bauart (key: Schlüssel in PAD_LABELS).
+func _pad_lbl(key: String) -> String:
+	return PAD_LABELS[_pad_kind][key]
 
 
 ## R bzw. A: nach Fehlschlag den Durchlauf wiederholen, im Ergebnis das Replay erneut zeigen.
@@ -1338,6 +1411,12 @@ func request_fire() -> void:
 func request_action() -> void:
 	if phase == Phase.PLAYING and _taken:
 		_action_latch = true
+
+
+## Umschalttaste: Hechtsprung.
+func request_roll() -> void:
+	if phase == Phase.PLAYING and _taken:
+		_roll_req = true
 
 
 ## C: ducken / aufstehen.
@@ -1378,22 +1457,26 @@ func _read_input() -> Dictionary:
 	action = action or Input.is_joy_button_pressed(_pad_dev, JOY_BUTTON_A)
 	aim_hold = aim_hold or Input.get_joy_axis(_pad_dev, JOY_AXIS_TRIGGER_LEFT) > PAD_TRIGGER \
 			or Input.is_joy_button_pressed(_pad_dev, JOY_BUTTON_LEFT_SHOULDER)
-	return {"move": move, "aim": _pad_aim_point(move, aim_hold), "action": action, "aim_hold": aim_hold}
+	return {"move": move, "aim": _pad_aim_point(), "action": action, "aim_hold": aim_hold}
 
 
-## Zielpunkt per Controller: der rechte Stick gibt die Richtung vor, seine Auslenkung
-## die Wurfweite der Granate. Ruht er, schaut der Officer in Laufrichtung – außer mit
-## angelegter Waffe, dann bleibt die Zielrichtung stehen (seitwärts laufen).
-func _pad_aim_point(move: Vector2, aim_hold: bool) -> Vector3:
+## Ziel-Stick auslesen (pro Frame, in echter Zeit). Wie bei Twin-Stick-Shootern üblich:
+## die Richtung des rechten Sticks IST die Blickrichtung, und nach dem Loslassen bleibt
+## die zuletzt gehaltene Richtung stehen. Damit das Zurückschnappen des Sticks sie nicht
+## verreißt, zählt eine Auslenkung nur, solange sie nicht gerade schnell abfällt.
+## Die Auslenkung bestimmt außerdem die Wurfweite der Granate.
+func _update_pad_aim() -> void:
 	var r := Vector2(Input.get_joy_axis(_pad_dev, JOY_AXIS_RIGHT_X), Input.get_joy_axis(_pad_dev, JOY_AXIS_RIGHT_Y))
 	var deflect := r.length()
-	if deflect > PAD_AIM_DEADZONE:
+	if deflect > PAD_AIM_DEADZONE and deflect >= _pad_prev_deflect - PAD_RELEASE_DROP:
 		_pad_aim_dir = Vector3(r.x, 0.0, r.y).normalized()
 		_pad_aim_dist = GRENADE_RANGE * clampf(inverse_lerp(PAD_AIM_DEADZONE, 0.95, deflect), 0.2, 1.0)
-	else:
-		_pad_aim_dist = PAD_THROW_DEFAULT
-		if not aim_hold and move.length() > 0.01:
-			_pad_aim_dir = Vector3(move.x, 0.0, move.y).normalized()
+	_pad_prev_deflect = deflect
+
+
+## Zielpunkt per Controller: vom Officer aus in die zuletzt mit dem rechten Stick
+## gehaltene Richtung (vor der ersten Eingabe: seine Blickrichtung).
+func _pad_aim_point() -> Vector3:
 	if _pad_aim_dir == Vector3.ZERO:
 		_pad_aim_dir = active.forward()
 	var p := active.global_position + _pad_aim_dir * maxf(_pad_aim_dist, 1.0)
@@ -1431,6 +1514,8 @@ func _process(_delta: float) -> void:
 	# Vorlauf in Echtzeit, dann Countdown mit Abbremsen auf Zeitlupe
 	if phase == Phase.PLAYING and not _taken:
 		_update_countdown(real_dt)
+	elif phase == Phase.PLAYING and _pad_active:
+		_update_pad_aim()
 
 	if phase == Phase.INTRO:
 		_update_intro(real_dt)
@@ -1587,7 +1672,7 @@ func _update_hints() -> void:
 		return
 	var di := _near_door(active)
 	if di >= 0:
-		_fx.prompts = [{"pos": doors[di].center + Vector3(0, 2.0, 0), "text": "X" if _pad_active else "E"}]
+		_fx.prompts = [{"pos": doors[di].center + Vector3(0, 2.0, 0), "text": _pad_lbl("x") if _pad_active else "E"}]
 
 	var list := []
 	for g in _ghosts:
@@ -1640,6 +1725,12 @@ func _laser_ends(a: Actor, pos: Vector3, p_yaw: float) -> Array:
 				if o != a and o.alive and o.crouched:
 					skip.append(o.get_rid())
 	var hit := _trace(from, from + dir * SHOT_RANGE, skip, mask)
+	# Durchschuss-Modus: der Laser zeigt, wohin die Kugel durch die Wände fliegt
+	var pierce := PIERCE_MAX_WALLS if a is Officer and (a as Officer).pierce_mode else 0
+	while pierce > 0 and not hit.is_empty() and _pierceable(hit.collider):
+		pierce -= 1
+		skip.append(hit.collider.get_rid())
+		hit = _trace(from, from + dir * SHOT_RANGE, skip, mask)
 	if hit.is_empty():
 		return [from, from + dir * SHOT_RANGE]
 	var pts := [from, hit.position]
@@ -1746,7 +1837,11 @@ func _update_hud(real_dt: float) -> void:
 
 	var seconds := (_rp_elapsed if phase == Phase.FINAL_REPLAY or phase == Phase.RESULTS else tick) / hz
 	var scale := TimeControl.current_scale()
-	var tempo := "ECHTZEIT" if scale > 0.95 else "TEMPO %d %%" % roundi(scale * 100.0)
+	var tempo := "TEMPO %d %%" % roundi(scale * 100.0)
+	if scale > 1.05:
+		tempo = "ECHTZEIT × %s" % String.num(scale, 1)
+	elif scale > 0.95:
+		tempo = "ECHTZEIT"
 	if phase == Phase.BREAK:
 		tempo = "STANDBILD"
 	elif phase == Phase.REWIND:
@@ -1758,7 +1853,7 @@ func _update_hud(real_dt: float) -> void:
 		var left := _count_left
 		if _count_left < 0.0:
 			# Countdown läuft noch nicht: Vorlauf in Echtzeit (override_scale 1.0) + Countdown
-			left = float(maxi(0, _count_start - tick)) / TimeControl.SIM_HZ + COUNT_TOTAL
+			left = float(maxi(0, _count_start - tick)) / (TimeControl.SIM_HZ * TimeControl.realtime_speed) + COUNT_TOTAL
 		_hud.set_takeover_timer(left, _lead_total, active.color)
 	else:
 		_hud.set_takeover_timer(-1.0, 1.0, Color.WHITE)
@@ -1766,10 +1861,11 @@ func _update_hud(real_dt: float) -> void:
 
 func _special_text(o: Officer) -> String:
 	# Tastennamen passend zum zuletzt benutzten Eingabegerät
-	var k_act := "A" if _pad_active else "LEERTASTE"
-	var k_crouch := "B" if _pad_active else "C"
-	var k_aim := "LT" if _pad_active else "RECHTE MAUSTASTE"
-	var k_fire := "RT" if _pad_active else "Linksklick"
+	var k_act := _pad_lbl("a") if _pad_active else "LEERTASTE"
+	var k_roll := _pad_lbl("y") if _pad_active else "UMSCHALT"
+	var k_crouch := _pad_lbl("b") if _pad_active else "C"
+	var k_aim := _pad_lbl("lt") if _pad_active else "RECHTE MAUSTASTE"
+	var k_fire := _pad_lbl("rt") if _pad_active else "Linksklick"
 	var text := ""
 	match o.role:
 		"flash":
@@ -1777,8 +1873,15 @@ func _special_text(o: Officer) -> String:
 					+ ("  (beendet den Zug)" if GRENADE_ENDS_TURN and not _solo else "")
 		"shield":
 			text = "%s   Schild heben" % k_act + ("  (beendet den Zug)" if SHIELD_ENDS_TURN and not _solo else "")
-		"roll":
-			text = "%s   Hechtrolle  ·  " % k_act + ("bereit" if o.roll_ready() >= 1.0 else "lädt …")
+		"pierce":
+			var mode := "aus"
+			if o.pierce_mode:
+				mode = "AN  (durch Wände, Streuung × %s)" % String.num(o.pierce_spread_factor, 1)
+			text = "%s   Durchschuss  ·  %s" % [k_act, mode]
+	var roll_state := "bereit" if o.roll_ready() >= 1.0 else "lädt …"
+	if o.shield_up:
+		roll_state = "nicht mit Schild"
+	text += "\n%s   Hechtsprung  ·  %s" % [k_roll, roll_state]
 	var aim_line := "WAFFE ANGELEGT  ·  %s schießt" % k_fire if o.aiming \
 			else "%s halten: Waffe anlegen" % k_aim
 	return text + ("\nGEDUCKT  ·  %s zum Aufstehen" % k_crouch if o.crouched else "\n%s zum Ducken" % k_crouch) \

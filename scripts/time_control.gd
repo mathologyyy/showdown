@@ -24,6 +24,9 @@ var normal_speed := 1.0
 var slowdown_only_while_aiming := true
 ## echte Sekunden für den weichen Übergang zwischen normalem Tempo und Slowdown.
 var slowdown_blend_time := 0.15
+## Tempo aller "Echtzeit"-Abschnitte (Vorlauf, Abschluss-Replay): 1.0 = echte Echtzeit,
+## 2.0 = doppelt so schnell. Der GameManager setzt damit override_scale.
+var realtime_speed := 1.0
 ## Wird vom GameManager pro Frame gesetzt: der gesteuerte Officer hat die Waffe angelegt.
 var aiming := false
 ## > 0: fester Wert, der die Zeitlupe überschreibt (Auswertung, Abschluss-Replay = 1.0).
@@ -78,6 +81,7 @@ func apply_tweaks() -> void:
 	normal_speed = clampf(Tweaks.num("tempo", "normal_speed", 1.0), 0.05, 2.0)
 	slowdown_only_while_aiming = Tweaks.flag("tempo", "slowdown_only_while_aiming", true)
 	slowdown_blend_time = Tweaks.num("tempo", "slowdown_blend_time", 0.15)
+	realtime_speed = clampf(Tweaks.num("tempo", "realtime_speed", 1.0), 0.25, 4.0)
 	if not slowdown_only_while_aiming or aiming:
 		_blend = 1.0
 	else:
