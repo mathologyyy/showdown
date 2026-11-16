@@ -90,7 +90,7 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 - An **Metall-Objekten** (bläulich glänzend: Spind und Heizkörper im Flur, Kühlschrank,
   Aktenschrank, Tresor) prallen Kugeln ab, Einfallswinkel = Ausfallswinkel, höchstens
   zweimal. Der eigene Laser spiegelt sich dort und zeigt die Bahn des Abprallers.
-- **Doppeltüren** (gut 2 m breit) sind zu Beginn geschlossen; den Eingang rammt Officer 3
+- **Doppeltüren** (1,75 m breit) sind zu Beginn geschlossen; den Eingang rammt Officer 3
   im Intro auf. Die übrigen sind geschlossen und blocken Sicht, Kugeln und Granaten. Aufstoßen
   hört man 6 m weit: Gegner in der Nähe drehen sich zur Tür.
 - **Gegner** tragen die Waffe gesenkt und ziehen sie erst, wenn sie einen Officer sehen oder
@@ -155,7 +155,8 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 | `scripts/sound_bank.gd` | Sounds: lädt die Aufnahmen, erzeugt die kurzen Signaltöne im Code |
 | `scripts/fx_overlay.gd` | 2D-Effekte über dem Nebel: Kugeln, Mündungsfeuer, Einschläge, Streubogen, Markierung |
 | `scripts/vision.gd` | Sichtkegel per Raycast, Abdunkelungs-Maske, Sichtbarkeitstest |
-| `scripts/level.gd` | Test-Wohnung als Datentabellen (Wände, Möbel, Startpositionen) |
+| `scripts/level.gd` | Test-Wohnung als Datentabellen (Wände, Böden, Möbel, Startpositionen), setzt sie aus den Bausteinen zusammen |
+| `assets/props/*.tscn` | Bausteine der Umgebung (Wand- und Boden-Module, Kiste, Möbel, Metallschrank, Türflügel) |
 | `scripts/main_menu.gd` | Hauptmenü und Einweisung (drei gezeichnete Tafeln) |
 | `scripts/pause_menu.gd` | Pausemenü |
 | `scripts/hud.gd` | HUD: Abschnittsleiste, Officer-Icons, Tastenbelegung, Titelkarten, Kinobalken, Ergebnis-Tafel |
@@ -163,6 +164,25 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 | `shaders/rewind.gdshader` | VHS-Effekt beim Zurückspulen |
 | `assets/characters/*.gltf` | Figuren mit Animationen |
 | `assets/sounds/*.wav` | Schüsse, Blendgranate, Tür |
+
+## Modelle und Umgebung austauschen
+
+Das Spiel ist so angelegt, dass Optik und Spiellogik getrennt sind: Die Logik rechnet mit
+Positionen und einfachen Kollisions-Quadern, alles Sichtbare kommt aus austauschbaren Dateien.
+
+- **Figuren:** Tabelle `MODELS` oben in `scripts/character_model.gd`, ein Eintrag pro Art:
+  `officer_flash`, `officer_shield`, `officer_pierce`, `enemy`, `hostage`. Die drei Officer
+  zeigen noch auf dasselbe Modell; zum Austauschen die Datei im Eintrag ändern. Stammt ein
+  Modell nicht aus dem Quaternius-Kit, lassen sich im Eintrag Größe (`scale`), Animationsnamen
+  (`anims`, Rollen siehe `ANIMS`) und einzufärbende Materialien (`tint`) angeben. Fehlende
+  Animationen werden übersprungen, das Spiel läuft trotzdem.
+- **Umgebung:** Bausteine als Szenen in `assets/props/` (Maße und Ursprung siehe
+  `assets/props/README.md`): Wand-Module 3 m / 1 m / 0,5 m plus Eckpfosten, Boden-Platten
+  3×3 / 3×1 / 1×1 m, Kiste, Möbel, Metallschrank, Türflügel. Zum Verschönern den Inhalt der
+  Szene ersetzen.
+- **Grundriss:** Tabellen oben in `scripts/level.gd` auf einem 0,5-m-Raster (Böden: 1 m). Das
+  Level belegt jede Wandstrecke und Bodenfläche automatisch mit den größten passenden Modulen.
+- **Noch im Code gebaut:** Schild und Rammbock (`scripts/officer.gd`), Licht (`scripts/level.gd`).
 
 ## Fremdmaterial
 

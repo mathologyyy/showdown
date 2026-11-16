@@ -31,7 +31,8 @@ var _label: Label3D
 var _prev_pos := Vector3.ZERO
 
 
-## kind: "officer", "enemy" oder "hostage" (wählt Modell und Waffe).
+## kind: Schlüssel in CharacterModel.MODELS ("officer_flash", "officer_shield",
+## "officer_pierce", "enemy" oder "hostage"), wählt Modell und Waffe.
 func setup(p_idx: int, kind: String, p_color: Color, layer: int, label := "") -> void:
 	idx = p_idx
 	color = p_color

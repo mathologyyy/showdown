@@ -388,7 +388,8 @@ func _spawn_actors() -> void:
 	for i in Level.OFFICER_SPAWNS.size():
 		var o := Officer.new()
 		add_child(o)
-		o.setup(i, "officer", OFFICER_COLORS[i], Actor.LAYER_OFFICER, str(i + 1))
+		# eigenes Modell pro Rolle (CharacterModel.MODELS: officer_flash/_shield/_pierce)
+		o.setup(i, "officer_" + Level.OFFICER_ROLES[i], OFFICER_COLORS[i], Actor.LAYER_OFFICER, str(i + 1))
 		o.global_position = Level.OFFICER_SPAWNS[i]
 		o.set_yaw(PI)
 		o.apply_tweaks()

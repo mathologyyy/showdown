@@ -1,9 +1,14 @@
 class_name Level
 extends Node3D
-## Handgebaute, kompakte Test-Wohnung aus Quadern. Sie ist so klein gehalten, dass
-## sie komplett ins Bild passt (feste Kamera, nichts liegt außerhalb des Bildschirms).
+## Handgebaute, kompakte Test-Wohnung. Sie ist so klein gehalten, dass sie komplett
+## ins Bild passt (feste Kamera, nichts liegt außerhalb des Bildschirms).
 ## Koordinaten: X nach rechts, Z nach unten (zum Betrachter).
 ## Wohnung x -8..8, z -4.5..4.5, Treppenhaus mit Eingangstür unten in der Mitte.
+##
+## Der Grundriss liegt auf einem 0,5-m-Raster. Sichtbar wird er aus austauschbaren
+## Bausteinen (Szenen in assets/props/, siehe dort README.md) zusammengesetzt:
+## Wände aus Modulen von 3 m, 1 m und 0,5 m, Böden aus 3×3, 3×1 und 1×1 m.
+## Kollision, Deckung und Abpraller rechnet der Code unabhängig davon mit Quadern.
 ##
 ##   z=-4.5 ┌───────────┬────┬───────────┐
 ##          │ Schlafzi. │ E1 │  Küche    │
@@ -18,35 +23,46 @@ const WALL_H := 1.6
 const WALL_T := 0.25
 const FURN_H := 1.2     # höher als die Schusslinie (1.0): Möbel sind echte Deckung
 
-## Bereich, den die feste Kamera vollständig zeigen muss: [x_min, z_min, x_max, z_max]
-const BOUNDS := [-8.4, -4.9, 8.4, 7.3]
+const PROP_DIR := "res://assets/props/"
+## Wand-Module, längstes zuerst: [Länge in m, Szenenname]
+const WALL_MODULES := [[3.0, "wall_3m"], [1.0, "wall_1m"], [0.5, "wall_05m"]]
 
-## Wände als Achsen-parallele Strecken [x1, z1, x2, z2]. Lücken = Türen.
+## Bereich, den die feste Kamera vollständig zeigen muss: [x_min, z_min, x_max, z_max]
+const BOUNDS := [-8.4, -4.9, 8.4, 7.8]
+
+## Bodenflächen [x1, z1, x2, z2], Kantenlängen in ganzen Metern.
+const FLOORS := [
+	[-8, -4.5, 8, 4.5],      # Wohnung
+	[-2, 4.5, 2, 7.5],       # Treppenhaus
+]
+
+## Wände als achsenparallele Strecken [x1, z1, x2, z2] auf dem 0,5-m-Raster. Lücken = Türen.
 const WALLS := [
 	# Außenwände
 	[-8, -4.5, 8, -4.5], [-8, -4.5, -8, 4.5], [8, -4.5, 8, 4.5],
-	[-8, 4.5, -1.1, 4.5], [1.1, 4.5, 8, 4.5],
+	[-8, 4.5, -1, 4.5], [1, 4.5, 8, 4.5],
 	# Treppenhaus
-	[-2.2, 4.5, -2.2, 7], [2.2, 4.5, 2.2, 7], [-2.2, 7, 2.2, 7],
+	[-2, 4.5, -2, 7.5], [2, 4.5, 2, 7.5], [-2, 7.5, 2, 7.5],
 	# Flur links (Türen zu Schlaf- und Wohnzimmer)
-	[-1.25, -4.5, -1.25, -3.4], [-1.25, -1.2, -1.25, 1.1], [-1.25, 3.3, -1.25, 4.5],
+	[-1.5, -4.5, -1.5, -3.5], [-1.5, -1.5, -1.5, 1.5], [-1.5, 3.5, -1.5, 4.5],
 	# Flur rechts (Türen zu Küche und Büro)
-	[1.25, -4.5, 1.25, -2.1], [1.25, 0.1, 1.25, 1.9], [1.25, 4.1, 1.25, 4.5],
+	[1.5, -4.5, 1.5, -2], [1.5, 0, 1.5, 2], [1.5, 4, 1.5, 4.5],
 	# Trennwand Schlafzimmer / Wohnzimmer mit Durchgang
-	[-8, 0, -6.3, 0], [-4.9, 0, -1.25, 0],
+	[-8, 0, -6.5, 0], [-5, 0, -1.5, 0],
 	# Trennwand Küche / Büro
-	[1.25, 0.3, 8, 0.3],
+	[1.5, 0.5, 8, 0.5],
 ]
 
-## Doppeltüren [x1, z1, x2, z2] in den Wandlücken (gut 2 m breit). Zu Beginn geschlossen,
+## Doppeltüren [x1, z1, x2, z2] in den 2 m breiten Wandlücken (je 0,125 m Abstand zum
+## Wandende, weil die Wand-Kollision so weit in die Lücke ragt). Zu Beginn geschlossen,
 ## Officer öffnen sie mit E; den Eingang (Index 0) rammt Officer 3 im Intro auf.
 ## Der Durchgang Schlaf-/Wohnzimmer hat keine Tür.
 const DOORS := [
-	[-0.975, 4.5, 0.975, 4.5],        # Eingang
-	[-1.25, -3.275, -1.25, -1.325],   # Schlafzimmer
-	[-1.25, 1.225, -1.25, 3.175],     # Wohnzimmer
-	[1.25, -1.975, 1.25, -0.025],     # Küche
-	[1.25, 2.025, 1.25, 3.975],       # Büro
+	[-0.875, 4.5, 0.875, 4.5],      # Eingang
+	[-1.5, -3.375, -1.5, -1.625],   # Schlafzimmer
+	[-1.5, 1.625, -1.5, 3.375],     # Wohnzimmer
+	[1.5, -1.875, 1.5, -0.125],     # Küche
+	[1.5, 2.125, 1.5, 3.875],       # Büro
 ]
 
 ## Kisten [x, z, Breite(x), Tiefe(z)]: niedrige Deckung. Sie blockieren den Weg, aber
@@ -69,7 +85,7 @@ const FURNITURE := [
 	[-4.8, 2.2, 1.3, 0.8],    # Couchtisch
 	[-7.6, 2.4, 0.5, 1.8],    # Regal
 	[-6.6, -3.3, 2.0, 2.0],   # Bett
-	[-1.8, -4.0, 0.7, 0.8],   # Kleiderschrank
+	[-2.0, -4.0, 0.7, 0.8],   # Kleiderschrank
 	[4.6, -2.0, 2.0, 0.9],    # Kücheninsel
 	[5.2, -4.15, 4.5, 0.6],   # Küchenzeile
 	[5.4, 1.7, 2.0, 0.8],     # Schreibtisch
@@ -78,8 +94,8 @@ const FURNITURE := [
 ## Metall-Objekte [x, z, Breite(x), Tiefe(z)]: Kugeln prallen daran ab (Einfallswinkel =
 ## Ausfallswinkel). Nur hier sind Schüsse "um die Ecke" möglich.
 const METAL := [
-	[0.9, 0.9, 0.45, 1.1],    # Stahlspind im Flur  -> Bande ins Schlaf- oder Wohnzimmer
-	[-0.95, -0.6, 0.35, 1.2], # Heizkörper im Flur  -> Bande in Küche oder Büro
+	[1.15, 0.9, 0.45, 1.1],   # Stahlspind im Flur  -> Bande ins Schlaf- oder Wohnzimmer
+	[-1.2, -0.6, 0.35, 1.2],  # Heizkörper im Flur  -> Bande in Küche oder Büro
 	[7.5, -0.4, 0.7, 0.7],    # Kühlschrank
 	[7.5, 3.5, 0.7, 1.5],     # Aktenschrank
 	[-7.6, -0.9, 0.5, 1.4],   # Tresor im Schlafzimmer
@@ -99,28 +115,28 @@ const ENEMY_SPOTS := [
 	[   # Flur
 		{"pos": Vector3(0.0, 0, -3.7), "look": Vector3(0.0, 0, 4.5)},
 		{"pos": Vector3(-0.5, 0, -2.4), "look": Vector3(0.0, 0, 4.5)},
-		{"pos": Vector3(0.5, 0, -3.9), "look": Vector3(-1.25, 0, -2.3)},
+		{"pos": Vector3(0.5, 0, -3.9), "look": Vector3(-1.5, 0, -2.5)},
 	],
 	[   # Wohnzimmer
-		{"pos": Vector3(-6.6, 0, 1.2), "look": Vector3(-1.25, 0, 2.2)},
-		{"pos": Vector3(-2.4, 0, 3.7), "look": Vector3(-1.25, 0, 2.2)},
-		{"pos": Vector3(-6.9, 0, 3.6), "look": Vector3(-1.25, 0, 2.2)},
+		{"pos": Vector3(-6.6, 0, 1.2), "look": Vector3(-1.5, 0, 2.5)},
+		{"pos": Vector3(-2.4, 0, 3.7), "look": Vector3(-1.5, 0, 2.5)},
+		{"pos": Vector3(-6.9, 0, 3.6), "look": Vector3(-1.5, 0, 2.5)},
 	],
 	[   # Schlafzimmer
 		{"pos": Vector3(-2.8, 0, -1.2), "look": Vector3(-7.0, 0, -1.2),
 			"patrol": [Vector3(-6.8, 0, -1.2), Vector3(-2.8, 0, -1.2)]},
-		{"pos": Vector3(-4.8, 0, -1.0), "look": Vector3(-1.25, 0, -2.3)},
-		{"pos": Vector3(-3.0, 0, -3.6), "look": Vector3(-1.25, 0, -2.3)},
+		{"pos": Vector3(-4.8, 0, -1.0), "look": Vector3(-1.5, 0, -2.5)},
+		{"pos": Vector3(-3.0, 0, -3.6), "look": Vector3(-1.5, 0, -2.5)},
 	],
 	[   # Küche
-		{"pos": Vector3(4.6, 0, -3.2), "look": Vector3(1.25, 0, -1.0)},
-		{"pos": Vector3(6.8, 0, -1.9), "look": Vector3(1.25, 0, -1.0)},
-		{"pos": Vector3(3.0, 0, -0.5), "look": Vector3(1.25, 0, -1.0)},
+		{"pos": Vector3(4.6, 0, -3.2), "look": Vector3(1.5, 0, -1.0)},
+		{"pos": Vector3(6.8, 0, -1.9), "look": Vector3(1.5, 0, -1.0)},
+		{"pos": Vector3(3.0, 0, -0.5), "look": Vector3(1.5, 0, -1.0)},
 	],
 	[   # Büro
-		{"pos": Vector3(6.2, 0, 3.3), "look": Vector3(1.25, 0, 3.0)},
-		{"pos": Vector3(3.2, 0, 1.2), "look": Vector3(1.25, 0, 3.0)},
-		{"pos": Vector3(4.0, 0, 3.9), "look": Vector3(1.25, 0, 3.0)},
+		{"pos": Vector3(6.2, 0, 3.3), "look": Vector3(1.5, 0, 3.0)},
+		{"pos": Vector3(3.2, 0, 1.2), "look": Vector3(1.5, 0, 3.0)},
+		{"pos": Vector3(4.0, 0, 3.9), "look": Vector3(1.5, 0, 3.0)},
 	],
 ]
 
@@ -131,21 +147,30 @@ const HOSTAGES := [
 ]
 
 
+var _scenes := {}                # Szenenname -> PackedScene (oder null, wenn die Datei fehlt)
+
+
 func build() -> void:
-	_add_floor(Vector3(0, -0.05, 0), Vector3(16, 0.1, 9), Color(0.30, 0.28, 0.25))
-	_add_floor(Vector3(0, -0.05, 5.75), Vector3(4.4, 0.1, 2.5), Color(0.20, 0.20, 0.22))
+	for f in FLOORS:
+		_lay_floor(f[0], f[1], f[2], f[3])
+	var posts := {}                  # Wandenden (jedes nur einmal): dort steht ein Pfosten
 	for w in WALLS:
 		var a := Vector3(w[0], 0, w[1])
 		var b := Vector3(w[2], 0, w[3])
+		# Kollision: ein Quader pro Strecke, an beiden Enden um die halbe Wandstärke länger
 		var size := Vector3(absf(b.x - a.x) + WALL_T, WALL_H, absf(b.z - a.z) + WALL_T)
-		_add_box((a + b) * 0.5 + Vector3(0, WALL_H * 0.5, 0), size, Color(0.62, 0.62, 0.66))
+		_add_collider((a + b) * 0.5 + Vector3(0, WALL_H * 0.5, 0), size)
+		_lay_wall(a, b)
+		posts[a] = true
+		posts[b] = true
+	for p: Vector3 in posts:
+		_place("wall_post", p)
 	for f in FURNITURE:
-		_add_box(Vector3(f[0], FURN_H * 0.5, f[1]), Vector3(f[2], FURN_H, f[3]), Color(0.45, 0.30, 0.18))
+		_add_prop("furniture", f, FURN_H)
 	for c in CRATES:
-		_add_box(Vector3(c[0], CRATE_H * 0.5, c[1]), Vector3(c[2], CRATE_H, c[3]), CRATE_COLOR,
-				false, Actor.LAYER_CRATE)
+		_add_prop("crate", c, CRATE_H, false, Actor.LAYER_CRATE)
 	for m in METAL:
-		_add_box(Vector3(m[0], FURN_H * 0.5, m[1]), Vector3(m[2], FURN_H, m[3]), METAL_COLOR, true)
+		_add_prop("metal_cabinet", m, FURN_H, true)
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-60, 35, 0)
@@ -164,9 +189,78 @@ func build() -> void:
 	add_child(we)
 
 
-## Massiver Quader: blockiert Bewegung, Sicht und Kugeln.
+## Wandstrecke a–b mit Modulen belegen: längste zuerst, lückenlos von einem Ende zum anderen.
+func _lay_wall(a: Vector3, b: Vector3) -> void:
+	var along_x := absf(b.x - a.x) > absf(b.z - a.z)
+	var start := a if a.x + a.z <= b.x + b.z else b
+	var dir := Vector3.RIGHT if along_x else Vector3.BACK
+	var yaw := 0.0 if along_x else PI * 0.5
+	var units := roundi(a.distance_to(b) * 2.0)      # Länge in halben Metern
+	var cursor := 0.0
+	for m in WALL_MODULES:
+		var length: float = m[0]
+		var prop: String = m[1]
+		var u := roundi(length * 2.0)
+		while units >= u:
+			_place(prop, start + dir * (cursor + length * 0.5), yaw)
+			cursor += length
+			units -= u
+
+
+## Bodenfläche mit 3×3-, 3×1- und 1×1-Platten belegen (Kanten in ganzen Metern).
+func _lay_floor(x1: float, z1: float, x2: float, z2: float) -> void:
+	var w := roundi(x2 - x1)
+	var d := roundi(z2 - z1)
+	var x := 0
+	while x < w:
+		var sx := 3 if w - x >= 3 else 1
+		var z := 0
+		while z < d:
+			var sz := 3 if d - z >= 3 else 1
+			var c := Vector3(x1 + x + sx * 0.5, 0.0, z1 + z + sz * 0.5)
+			if sx == 3 and sz == 3:
+				_place("floor_3x3", c)
+			elif sx == 3:
+				_place("floor_3x1", c)
+			elif sz == 3:
+				_place("floor_3x1", c, PI * 0.5)
+			else:
+				_place("floor_1x1", c)
+			z += sz
+		x += sx
+
+
+## Möbel, Kiste oder Metall-Objekt aus einer Tabellenzeile [x, z, Breite(x), Tiefe(z)]:
+## Kollisions-Quader plus der auf diese Maße gestreckte Baustein.
+func _add_prop(prop: String, e: Array, height: float, metal := false,
+		layer := Actor.LAYER_WORLD) -> void:
+	var size := Vector3(e[2], height, e[3])
+	_add_collider(Vector3(e[0], height * 0.5, e[1]), size, metal, layer)
+	_place(prop, Vector3(e[0], 0.0, e[1]), 0.0, size)
+
+
+## Baustein (Szene aus assets/props/) an eine Stelle setzen. Ursprung der Szene =
+## Bodenmitte. Fehlt die Datei, bleibt die Stelle unsichtbar (Warnung), die Kollision steht.
+func _place(prop: String, pos: Vector3, yaw := 0.0, scl := Vector3.ONE) -> Node3D:
+	if not _scenes.has(prop):
+		var path := PROP_DIR + prop + ".tscn"
+		_scenes[prop] = load(path) if ResourceLoader.exists(path) else null
+		if _scenes[prop] == null:
+			push_warning("Level: Baustein %s fehlt." % path)
+	var ps: PackedScene = _scenes[prop]
+	if ps == null:
+		return null
+	var n := ps.instantiate() as Node3D
+	add_child(n)
+	n.position = pos
+	n.rotation.y = yaw
+	n.scale = scl
+	return n
+
+
+## Unsichtbarer massiver Quader: blockiert Bewegung, Sicht und Kugeln.
 ## metal: Kugeln prallen ab (der GameManager fragt das Meta-Feld "metal" ab).
-func _add_box(center: Vector3, size: Vector3, color: Color, metal := false,
+func _add_collider(center: Vector3, size: Vector3, metal := false,
 		layer := Actor.LAYER_WORLD) -> void:
 	var body := StaticBody3D.new()
 	body.set_meta("metal", metal)
@@ -178,29 +272,4 @@ func _add_box(center: Vector3, size: Vector3, color: Color, metal := false,
 	shape.size = size
 	cs.shape = shape
 	body.add_child(cs)
-	var mesh := _box_mesh(size, color)
-	if metal:
-		var mat := mesh.material_override as StandardMaterial3D
-		mat.metallic = 0.85
-		mat.roughness = 0.25
-		mat.emission_enabled = true          # leichtes Eigenleuchten: als Bande erkennbar
-		mat.emission = color * 0.25
-	body.add_child(mesh)
 	add_child(body)
-
-
-func _add_floor(center: Vector3, size: Vector3, color: Color) -> void:
-	var mi := _box_mesh(size, color)
-	mi.position = center
-	add_child(mi)
-
-
-func _box_mesh(size: Vector3, color: Color) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = size
-	mi.mesh = bm
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mi.material_override = mat
-	return mi

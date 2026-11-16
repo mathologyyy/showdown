@@ -7,16 +7,40 @@ extends Node3D
 ## Dieses Skript wählt daraus die passende Animation. Die Abspielgeschwindigkeit
 ## wird an den Zeitfaktor des Spiels gekoppelt, damit Schritte in Zeitlupe langsam sind.
 
-const SCENES := {
-	"officer": preload("res://assets/characters/Character_Soldier.gltf"),
-	"enemy": preload("res://assets/characters/Character_Enemy.gltf"),
-	"hostage": preload("res://assets/characters/Character_Hazmat.gltf"),
+## Ein Eintrag pro Figurenart – hier werden Modelle ausgetauscht.
+##   scene   Modell-Datei (Pflicht)
+##   weapon  Name des Waffen-Knotens, der sichtbar bleibt ("" = unbewaffnet)
+## Optional, wenn ein Modell nicht aus dem Quaternius-Kit stammt:
+##   scale   Größe (Standard MODEL_SCALE)
+##   anims   {Rolle der Animation: Name im Modell}, überschreibt einzelne Einträge von ANIMS
+##   tint    Namen der Materialien, die die Teamfarbe bekommen (Standard TINT_MATERIALS)
+## Die drei Officer haben je einen eigenen Eintrag, zeigen aber noch auf dasselbe Modell.
+const MODELS := {
+	"officer_flash": {"scene": preload("res://assets/characters/Character_Soldier.gltf"), "weapon": "SMG"},
+	"officer_shield": {"scene": preload("res://assets/characters/Character_Soldier.gltf"), "weapon": "SMG"},
+	"officer_pierce": {"scene": preload("res://assets/characters/Character_Soldier.gltf"), "weapon": "SMG"},
+	"enemy": {"scene": preload("res://assets/characters/Character_Enemy.gltf"), "weapon": "AK"},
+	"hostage": {"scene": preload("res://assets/characters/Character_Hazmat.gltf"), "weapon": ""},
 }
-## Waffe, die sichtbar bleibt ("" = unbewaffnet). Alle anderen Waffen-Meshes werden versteckt.
-const WEAPON := {"officer": "SMG", "enemy": "AK", "hostage": ""}
+## Welche Animation des Modells welche Rolle spielt (Namen des Quaternius-Kits).
+## Fehlt eine Animation im Modell, wird sie einfach nicht abgespielt.
+const ANIMS := {
+	"idle": "Idle",             # stehen, Waffe gesenkt
+	"walk": "Walk",
+	"run": "Run",               # laufen, unbewaffnet
+	"run_gun": "Run_Gun",       # laufen, Waffe gesenkt
+	"walk_aim": "Walk_Shoot",   # gehen, Waffe angelegt
+	"run_aim": "Run_Shoot",     # laufen, Waffe angelegt
+	"aim_shoot": "Idle_Shoot",  # erstes Bild = Zielhaltung, abgespielt = Schuss
+	"duck": "Duck",             # Mitte der Animation = geduckte Haltung
+	"punch": "Punch",           # Rammbock-Stoß und Granatenwurf
+	"death": "Death",
+}
+## Diese Rollen laufen in Schleife.
+const LOOPING := ["idle", "walk", "run", "run_gun", "walk_aim", "run_aim"]
+## Alle Waffen-Knoten des Kits: bis auf die gewählte werden sie versteckt.
 const ALL_WEAPONS := ["AK", "GrenadeLauncher", "Knife_1", "Knife_2", "Pistol", "Revolver",
 	"Revolver_Small", "RocketLauncher", "ShortCannon", "Shotgun", "Shovel", "SMG", "Sniper", "Sniper_2"]
-const LOOPING := ["Idle", "Walk", "Run", "Run_Gun", "Run_Shoot", "Walk_Shoot"]
 ## Materialien, die mit der Teamfarbe eingefärbt werden.
 const TINT_MATERIALS := ["Character_Main", "Hazmat_Main"]
 const MODEL_SCALE := 0.85
@@ -34,6 +58,9 @@ var _dimmed := false
 var _rolling := false
 var _crouched := false
 var _roll_angle := 0.0
+var _names := {}             # Rolle der Animation -> Name im Modell (ANIMS + Überschreibungen)
+var _tint_names: Array = TINT_MATERIALS
+var _scale := MODEL_SCALE
 
 const ROLL_HOP := 0.55           # Scheitelhöhe des Hechtsprungs (m)
 const ROLL_HOP_TURNS := 0.9      # nach so vielen Überschlägen ist die Figur wieder am Boden
@@ -42,8 +69,14 @@ const ROLL_PIVOT := 0.55         # Höhe des Drehpunkts
 
 
 func build(kind: String, tint: Color) -> void:
-	var inst: Node3D = SCENES[kind].instantiate()
-	inst.scale = Vector3.ONE * MODEL_SCALE
+	var def: Dictionary = MODELS[kind]
+	_names = ANIMS.duplicate()
+	_names.merge(def.get("anims", {}), true)
+	_tint_names = def.get("tint", TINT_MATERIALS)
+	_scale = def.get("scale", MODEL_SCALE)
+	var weapon: String = def.get("weapon", "")
+	var inst: Node3D = def.scene.instantiate()
+	inst.scale = Vector3.ONE * _scale
 	add_child(inst)
 	_inst = inst
 	_dim_mat = StandardMaterial3D.new()
@@ -51,16 +84,40 @@ func build(kind: String, tint: Color) -> void:
 	_dim_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_dim_mat.albedo_color = Color(0.0, 0.0, 0.02, 0.74)
 	_anim = inst.find_child("AnimationPlayer", true, false)
-	_armed = WEAPON[kind] != ""
+	_armed = weapon != ""
 	for w in ALL_WEAPONS:
 		var node := inst.find_child(w, true, false) as Node3D
 		if node:
-			node.visible = w == WEAPON[kind]
-	for a in LOOPING:
-		if _anim.has_animation(a):
-			_anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
+			node.visible = w == weapon
+	for key in LOOPING:
+		if _has(key):
+			_anim.get_animation(_names[key]).loop_mode = Animation.LOOP_LINEAR
 	_apply_tint(inst, tint)
 	reset()
+
+
+## Hat das Modell die Animation für diese Rolle?
+func _has(key: String) -> bool:
+	return _anim != null and _anim.has_animation(_names.get(key, ""))
+
+
+## Animation einer Rolle abspielen (blend/speed wie AnimationPlayer.play).
+func _play(key: String, blend := -1.0, speed := 1.0) -> void:
+	if _has(key):
+		_anim.play(_names[key], blend, speed)
+
+
+## Abspielposition setzen: frac 0 = Anfang, 1 = Ende der Animation dieser Rolle.
+func _seek(key: String, frac: float) -> void:
+	if _has(key):
+		_anim.seek(_anim.get_animation(_names[key]).length * frac, true)
+
+
+## Standbild: ein Bild aus der Animation als Pose (Abspieltempo 0, damit das
+## Überblenden aus der vorigen Animation trotzdem zu Ende läuft).
+func _pose(key: String, frac: float, blend: float) -> void:
+	_play(key, blend, 0.0)
+	_seek(key, frac)
 
 
 func _apply_tint(node: Node, tint: Color) -> void:
@@ -69,7 +126,7 @@ func _apply_tint(node: Node, tint: Color) -> void:
 		_meshes.append(mi)
 		for s in mi.mesh.get_surface_count():
 			var mat := mi.mesh.surface_get_material(s) as StandardMaterial3D
-			if mat and mat.resource_name in TINT_MATERIALS:
+			if mat and mat.resource_name in _tint_names:
 				var copy := mat.duplicate() as StandardMaterial3D
 				copy.albedo_color = tint
 				mi.set_surface_override_material(s, copy)
@@ -80,20 +137,20 @@ func _apply_tint(node: Node, tint: Color) -> void:
 ## Pro Frame: Bewegungsanimation passend zur Geschwindigkeit, Tempo passend zur Spielzeit.
 ## game_dt: seit dem letzten Frame vergangene Spielzeit (treibt den Überschlag der Rolle).
 func update(speed: float, time_scale: float, game_dt := 0.0) -> void:
-	_anim.speed_scale = time_scale
+	if _anim:
+		_anim.speed_scale = time_scale
 	if _dead:
 		return
 	if _rolling:
 		_roll_angle += TAU * ROLL_TURNS_PER_SEC * game_dt
 		_apply_roll()
 		return
-	if _state == "shoot" and _anim.is_playing():
+	if _state == "shoot" and _anim != null and _anim.is_playing():
 		return
 	if _crouched:
 		if _state != "crouch":
 			_state = "crouch"
-			_anim.play("Duck", 0.1, 0.0)
-			_anim.seek(_anim.get_animation("Duck").length * 0.5, true)
+			_pose("duck", 0.5, 0.1)
 		return
 	var want := "stand"
 	if speed > RUN_SPEED:
@@ -132,8 +189,7 @@ func set_rolling(on: bool) -> void:
 	_roll_angle = 0.0
 	if on:
 		_state = "roll"
-		_anim.play("Duck", 0.05, 0.0)
-		_anim.seek(_anim.get_animation("Duck").length * 0.5, true)
+		_pose("duck", 0.5, 0.05)
 	else:
 		_state = ""
 	_apply_roll()
@@ -145,7 +201,7 @@ func _apply_roll() -> void:
 	# Hechtsprung: die Figur hebt im Bogen ab (rein optisch), so fliegt sie sichtbar
 	# über geduckte Kollegen hinweg
 	var hop := ROLL_HOP * sin(clampf(_roll_angle / (TAU * ROLL_HOP_TURNS), 0.0, 1.0) * PI)
-	_inst.transform = Transform3D(b.scaled(Vector3.ONE * MODEL_SCALE), pivot - b * pivot + Vector3(0.0, hop, 0.0))
+	_inst.transform = Transform3D(b.scaled(Vector3.ONE * _scale), pivot - b * pivot + Vector3(0.0, hop, 0.0))
 
 
 ## Geduckte Haltung (auch in Bewegung: das Kit hat keinen Schleich-Gang).
@@ -160,8 +216,8 @@ func punch() -> void:
 	if _dead:
 		return
 	_state = "shoot"
-	_anim.play("Punch", 0.05, 1.3)
-	_anim.seek(0.0, true)
+	_play("punch", 0.05, 1.3)
+	_seek("punch", 0.0)
 
 
 ## Wurfbewegung für die Blendgranate.
@@ -169,25 +225,25 @@ func throw() -> void:
 	if _dead or _rolling:
 		return
 	_state = "shoot"
-	_anim.play("Punch", 0.05, 1.0)
-	_anim.seek(0.0, true)
+	_play("punch", 0.05, 1.0)
+	_seek("punch", 0.0)
 
 
 func shoot() -> void:
 	if _dead or _rolling or _crouched or not _armed or _state == "run" or _state == "walk":
 		return   # im Laufen zeigt die Lauf-Animation bereits die Schusshaltung
 	_state = "shoot"
-	_anim.play("Idle_Shoot", 0.0, 1.0)
-	_anim.seek(0.0, true)
+	_play("aim_shoot", 0.0, 1.0)
+	_seek("aim_shoot", 0.0)
 
 
 func die(instant := false) -> void:
 	set_rolling(false)
 	_dead = true
 	_state = "dead"
-	_anim.play("Death", 0.0 if instant else 0.05)
+	_play("death", 0.0 if instant else 0.05)
 	if instant:
-		_anim.seek(_anim.get_animation("Death").length, true)
+		_seek("death", 1.0)
 
 
 ## Zurück in die Grundhaltung (Checkpoint-Reset, Wiederbelebung im Replay).
@@ -206,26 +262,24 @@ func _enter(state: String, blend := 0.12) -> void:
 	match state:
 		"run":
 			if _armed:
-				_anim.play("Run_Shoot" if _aiming else "Run_Gun", blend)
+				_play("run_aim" if _aiming else "run_gun", blend)
 			else:
-				_anim.play("Run", blend)
+				_play("run", blend)
 		"walk":
 			if _armed:
-				_anim.play("Walk_Shoot" if _aiming else "Walk", blend)
+				_play("walk_aim" if _aiming else "walk", blend)
 			else:
-				_anim.play("Walk", blend)
+				_play("walk", blend)
 		"stand":
 			if _armed:
 				if _aiming:
 					# Zielhaltung = erstes Bild der Schuss-Animation. Standbilder mit
 					# Abspieltempo 0 (statt pause()), damit das Überblenden aus der
 					# vorigen Animation trotzdem zu Ende läuft.
-					_anim.play("Idle_Shoot", blend, 0.0)
-					_anim.seek(0.0, true)
+					_pose("aim_shoot", 0.0, blend)
 				else:
 					# Waffe gesenkt: normale Stand-Animation, loopt
-					_anim.play("Idle", blend)
+					_play("idle", blend)
 			else:
 				# Geiseln kauern am Boden
-				_anim.play("Duck", 0.0, 0.0)
-				_anim.seek(_anim.get_animation("Duck").length * 0.5, true)
+				_pose("duck", 0.5, 0.0)

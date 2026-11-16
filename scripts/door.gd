@@ -31,21 +31,18 @@ func setup(a: Vector3, b: Vector3) -> void:
 	cs.position = center + Vector3(0, Level.WALL_H * 0.5, 0)
 	add_child(cs)
 
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.72, 0.42, 0.16)
-	for hinge in [a, b]:
+	# Türflügel: austauschbarer Baustein (Einheitswürfel, wird auf Flügelgröße gestreckt)
+	var leaf_scene: PackedScene = load(Level.PROP_DIR + "door_leaf.tscn")
+	for hinge: Vector3 in [a, b]:
 		var pivot := Node3D.new()
 		pivot.position = hinge
 		pivot.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		add_child(pivot)
-		var mi := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = _size(length * 0.5 - 0.02, along_x)
-		mi.mesh = bm
-		mi.material_override = mat
+		var leaf := leaf_scene.instantiate() as Node3D
+		leaf.scale = _size(length * 0.5 - 0.02, along_x)
 		# Flügel reicht von der Angel bis zur Mitte der Lücke
-		mi.position = (center - hinge) * 0.5 + Vector3(0, Level.WALL_H * 0.5, 0)
-		pivot.add_child(mi)
+		leaf.position = (center - hinge) * 0.5 + Vector3(0, Level.WALL_H * 0.5, 0)
+		pivot.add_child(leaf)
 		_pivots.append(pivot)
 
 
