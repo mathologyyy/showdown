@@ -37,8 +37,10 @@ PlayStation-Controller benutzt wird, und zeigt im HUD die Beschriftung, die dort
 Stelle steht (Switch Pro: B / A / Y / X, ZL / L, ZR / R, +). Es schaltet automatisch auf das
 zuletzt benutzte Eingabegerät um.
 
-**Zielen mit dem Controller:** Die Richtung des rechten Sticks ist die Blickrichtung. Nach dem
-Loslassen bleibt die zuletzt gehaltene Richtung stehen; Laufen dreht den Officer nicht. Die
+**Zielen mit dem Controller:** Die Richtung des rechten Sticks ist die Blickrichtung. Der Officer
+dreht sich in echter Zeit dorthin (auch in der Zeitlupe schnell) und hält dann an; nach dem
+Loslassen bleibt die zuletzt gehaltene Richtung stehen, Laufen dreht ihn nicht. Drehtempo und
+Totzone stehen in `gameplay_tweaks.cfg` (`pad_turn_speed_deg`, `pad_aim_deadzone`). Die
 Auslenkung bestimmt die Wurfweite der Blendgranate.
 
 **Zug freiwillig beenden** („Position halten“) liegt vorübergehend auf keiner Taste mehr, weil

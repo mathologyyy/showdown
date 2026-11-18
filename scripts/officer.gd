@@ -88,15 +88,23 @@ func set_role(p_role: String) -> void:
 ## Einen Simulations-Tick lang steuern. aim_held: rechte Maustaste gehalten (Waffe
 ## anlegen). action_held/action_pressed: Aktionstaste (Leertaste, Spezialfähigkeit).
 ## roll_pressed: Taste für den Hechtsprung.
+## pad_turn: >= 0 beim Controller – so viele Radiant darf sich der Officer in diesem Tick
+## höchstens drehen (vom GameManager aus echter Zeit berechnet, also auch in der Zeitlupe
+## schnell). < 0 bei der Maus: träges Nachziehen in Spielzeit wie bisher.
 ## Liefert true, wenn in diesem Tick eine Blendgranate geworfen wird.
 func control_tick(move: Vector2, aim_point: Vector3, aim_held: bool, action_held: bool, action_pressed: bool,
-		crouch_toggle: bool, roll_pressed: bool, dt: float) -> bool:
+		crouch_toggle: bool, roll_pressed: bool, dt: float, pad_turn := -1.0) -> bool:
 	if crouch_toggle:
 		set_crouched(not crouched)
 	# Zielrichtung folgt dem Mauszeiger verzögert (exponentielles Nachziehen).
 	var to_aim := aim_point - global_position
 	if Vector2(to_aim.x, to_aim.z).length() > 0.3:
-		set_yaw(lerp_angle(yaw, atan2(to_aim.x, to_aim.z), 1.0 - exp(-aim_follow * dt)))
+		var want := atan2(to_aim.x, to_aim.z)
+		if pad_turn >= 0.0:
+			# Controller: mit fester Winkelgeschwindigkeit genau bis zur Stick-Richtung, kein Nachlaufen
+			set_yaw(rotate_toward(yaw, want, pad_turn))
+		else:
+			set_yaw(lerp_angle(yaw, want, 1.0 - exp(-aim_follow * dt)))
 
 	_roll_cd = maxf(0.0, _roll_cd - dt)
 	var thrown := false

@@ -107,7 +107,8 @@ const STAR_EXTRA_SHOTS := 2         # erlaubte Schüsse = Zahl der Gegner + so v
 const STAR_PASSES := 4
 ## Controller: linker Stick bewegt, rechter Stick zielt, LT/LB legt die Waffe an, RT/RB schießt.
 const PAD_MOVE_DEADZONE := 0.25
-const PAD_AIM_DEADZONE := 0.4
+var PAD_AIM_DEADZONE: float = 0.35  # radiale Totzone des Ziel-Sticks; aus Tweaks "player"
+var PAD_TURN_SPEED: float = 1080.0   # Drehtempo mit dem Controller (Grad pro ECHTER Sekunde); aus Tweaks "player"
 ## Fällt die Auslenkung des Ziel-Sticks pro Frame um mehr als das, wird er gerade
 ## losgelassen: die Richtung beim Zurückschnappen zählt dann nicht mehr.
 const PAD_RELEASE_DROP := 0.04
@@ -225,6 +226,8 @@ func _ready() -> void:
 	FLASH_SECONDS = Tweaks.num("weapons", "flash_seconds", 2.5)
 	MAX_BOUNCES = Tweaks.whole("weapons", "max_bounces", 2)
 	PIERCE_MAX_WALLS = Tweaks.whole("weapons", "pierce_max_walls", 2)
+	PAD_AIM_DEADZONE = clampf(Tweaks.num("player", "pad_aim_deadzone", 0.35), 0.05, 0.9)
+	PAD_TURN_SPEED = Tweaks.num("player", "pad_turn_speed_deg", 1080.0)
 	FAIL_ON_HOSTAGE_HIT = Tweaks.flag("mission", "fail_on_hostage_hit", true)
 	RESOLVE_TIME_SCALE = Tweaks.num("tempo", "resolve_speed", 0.6)
 	REWIND_SPEED = Tweaks.num("tempo", "rewind_speed", 4.0)
@@ -832,7 +835,8 @@ func _sim_tick(dt: float) -> void:
 				var roll: bool = _roll_req or inp.get("roll", false)
 				_roll_req = false
 				var shield_before := o.shield_up
-				var thrown := o.control_tick(inp.move, inp.aim, inp.get("aim_hold", false), held, pressed, crouch, roll, dt)
+				var thrown := o.control_tick(inp.move, inp.aim, inp.get("aim_hold", false), held, pressed, crouch, roll, dt,
+						inp.get("pad_turn", -1.0))
 				_track.add_frame(o)
 				if thrown:
 					var target := _grenade_target(o, inp.aim)
@@ -1554,13 +1558,19 @@ func _read_input() -> Dictionary:
 	action = action or Input.is_joy_button_pressed(_pad_dev, JOY_BUTTON_A)
 	aim_hold = aim_hold or Input.get_joy_axis(_pad_dev, JOY_AXIS_TRIGGER_LEFT) > PAD_TRIGGER \
 			or Input.is_joy_button_pressed(_pad_dev, JOY_BUTTON_LEFT_SHOULDER)
-	return {"move": move, "aim": _pad_aim_point(), "action": action, "aim_hold": aim_hold}
+	# Drehung beim Controller in ECHTER Zeit: ein Tick dauert in der Zeitlupe länger
+	var real_tick := TimeControl.DT / maxf(TimeControl.current_scale(), 0.01)
+	var pad_turn := deg_to_rad(PAD_TURN_SPEED) * real_tick
+	return {"move": move, "aim": _pad_aim_point(), "action": action, "aim_hold": aim_hold,
+			"pad_turn": pad_turn}
 
 
 ## Ziel-Stick auslesen (pro Frame, in echter Zeit). Wie bei Twin-Stick-Shootern üblich:
-## die Richtung des rechten Sticks IST die Blickrichtung, und nach dem Loslassen bleibt
-## die zuletzt gehaltene Richtung stehen. Damit das Zurückschnappen des Sticks sie nicht
-## verreißt, zählt eine Auslenkung nur, solange sie nicht gerade schnell abfällt.
+## die Richtung des rechten Sticks IST die Blickrichtung (radiale Totzone, nur die Richtung
+## zählt), und nach dem Loslassen bleibt die zuletzt gehaltene Richtung stehen. Der Officer
+## dreht sich in echter Zeit dorthin und hält dann an (siehe pad_turn in _read_input).
+## Damit das Zurückschnappen des Sticks die Richtung nicht verreißt, zählt eine Auslenkung
+## nur, solange sie nicht gerade schnell abfällt.
 ## Die Auslenkung bestimmt außerdem die Wurfweite der Granate.
 func _update_pad_aim() -> void:
 	var r := Vector2(Input.get_joy_axis(_pad_dev, JOY_AXIS_RIGHT_X), Input.get_joy_axis(_pad_dev, JOY_AXIS_RIGHT_Y))
