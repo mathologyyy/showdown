@@ -99,6 +99,8 @@ var MAX_BOUNCES: int = 2            # so oft prallt eine Kugel höchstens an Met
 var FAIL_ON_HOSTAGE_HIT: bool = true # Mission scheitert, sobald eine Geisel getroffen wird; aus Tweaks "mission"
 const DOOR_REACH := 1.7             # so nah muss ein Officer an der Tür stehen, um sie zu öffnen
 const DOOR_NOISE := 6.0             # so weit hört man eine aufgestoßene Tür
+## Wegschieben: näher als so (Mitte zu Mitte) kommen sich zwei Figuren nicht.
+const PUSH_GAP := Actor.RADIUS * 2.0
 const NEAR_MISS := 0.9              # fliegt eine Team-Kugel so knapp vorbei, geht der Gegner in Deckung
 const GHOST_STEP := 12              # Vorschau früherer Officer: ein Wegpunkt alle so viele Ticks
 ## Wertung: je ein Stern für Einsatzdauer, Team-Schüsse und Durchläufe unter diesen Grenzen.
@@ -904,6 +906,8 @@ func _sim_tick(dt: float) -> void:
 					o.ammo -= 1
 					_fire_bullet(o, s.dir, false, s.get("pierce", false))
 
+	_push_bodies()
+
 	# --- Gegner: jede Runde live simuliert ---
 	for e in enemies:
 		if e.alive:
@@ -958,6 +962,40 @@ func _check_solo_end() -> void:
 		_segment.ticks = tick
 		rounds.timeline.append(_segment)
 		_start_final_replay()
+
+
+## Wegschieben: Officer schieben Kollegen und Geiseln, die ihnen im Weg stehen, beiseite
+## (an Wänden und Möbeln gleiten sie entlang). So bleibt niemand in engen Gängen stecken,
+## und man kann einen Kollegen aus der Schusslinie einer heranfliegenden Kugel schieben.
+## Geschoben werden nur Figuren, die gerade NICHT von einer Aufzeichnung gesteuert werden:
+##  - Geiseln
+##  - Officer, deren Zug in diesem Durchlauf schon vorbei ist und die Position halten
+## Der gesteuerte Officer selbst und Officer, die noch ihre Aufzeichnung abfahren, werden
+## nicht geschoben (eine Aufzeichnung würde die Position ohnehin überschreiben).
+## Wer im Hechtsprung ist, springt über Geduckte hinweg statt sie zu schieben.
+## Feste Reihenfolge, nur Positionen als Eingabe: bleibt in jedem Zug deterministisch.
+func _push_bodies() -> void:
+	var pushable: Array[Actor] = []
+	for o in officers:
+		if o.alive and o != active and rounds.tracks.has(o.idx) \
+				and tick >= (rounds.tracks[o.idx] as RoundSystem.Track).length():
+			pushable.append(o)
+	for h in hostages:
+		if h.alive:
+			pushable.append(h)
+	for p in pushable:
+		for q in officers:
+			if q == p or not q.alive:
+				continue
+			if q.rolling and p is Officer and (p as Officer).crouched:
+				continue
+			var d := p.global_position - q.global_position
+			d.y = 0.0
+			var dist := d.length()
+			if dist >= PUSH_GAP:
+				continue
+			var away := d / dist if dist > 0.001 else q.forward()
+			p.move_step(away * (PUSH_GAP - dist))
 
 
 ## Welt-Zustand eines Ticks an eine Aufzeichnung anhängen: pro Figur x, z, yaw,
@@ -1779,8 +1817,10 @@ func _update_vision_and_lasers() -> void:
 				var ends := _laser_ends(e, t.origin, atan2(t.basis.z.x, t.basis.z.z))
 				beam.set_points(ends[0], ends[1])
 				beam.visible = true
+				# gelockt: Laser flackert hell – die Richtung steht fest, jetzt ausweichen
+				beam.set_alpha(1.0 if e.vis_locked and fmod(_time, 0.12) < 0.06 else 0.9)
 				if phase != Phase.FINAL_REPLAY and phase != Phase.RESULTS:
-					threats.append({"pos": t.origin, "aim": e.vis_aim, "blind": false})
+					threats.append({"pos": t.origin, "aim": e.vis_aim, "blind": false, "locked": e.vis_locked})
 			elif e.vis_blind and shown:
 				threats.append({"pos": t.origin, "aim": 0.0, "blind": true})
 	_fx.threats = threats

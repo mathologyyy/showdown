@@ -57,7 +57,7 @@ einschalten: `HOLD_KEY_ENABLED` oben in `scripts/game_manager.gd` (dann F / Ente
 
 **Hechtsprung (alle):** schneller Satz in Laufrichtung (doppeltes Lauftempo), nicht lenkbar,
 weiterhin treffbar, nicht mit erhobenem Schild. Danach kurz maximale Streuung, 1,5 Spielsekunden
-Abklingzeit. Figuren blockieren sich gegenseitig nicht, man springt also über geduckte Kollegen hinweg.
+Abklingzeit. Im Sprung fliegt man über geduckte Kollegen hinweg, statt sie wegzuschieben.
 
 **Ducken:** Geduckt ist man 30 % langsamer. Stehende Kollegen schießen über Geduckte hinweg.
 Hinter den hellbraunen **Kisten** ist ein Geduckter aus dieser Richtung nicht zu treffen;
@@ -95,6 +95,14 @@ zum Schießen über die Kiste muss er aufstehen. Im Freien schützt Ducken nicht
 - **Doppeltüren** (1,75 m breit) sind zu Beginn geschlossen; den Eingang rammt Officer 3
   im Intro auf. Die übrigen sind geschlossen und blocken Sicht, Kugeln und Granaten. Aufstoßen
   hört man 6 m weit: Gegner in der Nähe drehen sich zur Tür.
+- **Ziel-Lock der Gegner:** In den letzten `aim_lock_time` Spielsekunden vor dem Schuss (derzeit 1,0)
+  halten Gegner ihre Zielrichtung fest und schießen genau dorthin. Wer in dieser Zeit aus der
+  Linie geht, wird nicht getroffen. Zu erkennen an weißen Ecken um den „!“-Ring und einem
+  flackernden Laser.
+- **Wegschieben:** Officer schieben Kollegen, die ihren Zug schon hinter sich haben und Position
+  halten, sowie Geiseln beiseite. So kann man einen Kollegen aus der Bahn einer heranfliegenden
+  Kugel schieben. Wer gerade seine Aufzeichnung abfährt, wird nicht geschoben; im Hechtsprung
+  springt man über Geduckte hinweg.
 - **Gegner** tragen die Waffe gesenkt und ziehen sie erst, wenn sie einen Officer sehen oder
   etwas hören (Schuss, Granate, Tür). Erst mit gezogener Waffe zielen und schießen sie.
 - **Gegner reagieren:** Beim ersten Alarm stellt sich ein Gegner hinter eine nahe Geisel und
@@ -207,7 +215,7 @@ mit Kommentar). Sie wird beim Start und bei jeder neuen Mission (**N**) neu gele
 |---|---|
 | `[tempo]` | Echtzeit-Tempo (Vorlauf, Replay), Slowdown-Tempo, normales Spieltempo, Schalter „Slowdown nur beim Zielen“, Übergangszeit, Rückspulgeschwindigkeit (mit Mindest- und Höchstdauer), Tempo der Auswertung |
 | `[player]` | Lauftempo (auch geduckt, mit Schild, mit angelegter Waffe), Ziel-Rotation, Aim-Stabilität, Streuung, Munition, Granaten, Hechtsprung, Streuung im Durchschuss |
-| `[enemy]` | Reaktionszeit, Ziel-Tempo, Ziel-Genauigkeit, Zeit zum Ziehen der Waffe, Feuerrate, Sicht- und Hörweite, Lauftempo, Deckung, Geisel-Frist |
+| `[enemy]` | Reaktionszeit, Ziel-Lock vor dem Schuss, Ziel-Tempo, Ziel-Genauigkeit, Zeit zum Ziehen der Waffe, Feuerrate, Sicht- und Hörweite, Lauftempo, Deckung, Geisel-Frist |
 | `[weapons]` | Kugeltempo, Granate (Wurfweite, Tempo, Zünder, Blendradius, Blenddauer), Zahl der Abpraller, Zahl der durchschlagenen Wände |
 | `[mission]` | Schalter `fail_on_hostage_hit`: scheitert die Mission, wenn eine Geisel getroffen wird? |
 

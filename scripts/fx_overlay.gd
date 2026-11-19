@@ -21,7 +21,8 @@ var arc: Dictionary = {}
 var marker: Dictionary = {}
 ## Blendgranaten im Flug: [{pos: Vector3 (mit Flughöhe), ground: Vector3}]
 var grenades: Array = []
-## Anzeige über Gegnern: [{pos: Vector3, aim: 0..1 (bei 1 fällt der Schuss), blind: bool}]
+## Anzeige über Gegnern: [{pos: Vector3, aim: 0..1 (bei 1 fällt der Schuss), blind: bool,
+##   locked: bool (Zielrichtung gelockt)}]
 var threats: Array = []
 ## Vorschau früherer Officer: [{color, points: [Vector3], shots: [{pos, dir}]}]
 var ghosts: Array = []
@@ -247,6 +248,12 @@ func _draw_threat(t: Dictionary) -> void:
 	draw_arc(p, radius, 0.0, TAU, 32, Color(1, 1, 1, 0.22), 4.0, true)
 	if aim > 0.01:
 		draw_arc(p, radius, -PI * 0.5, -PI * 0.5 + TAU * aim, 32, col, 5.0, true)
+	if t.get("locked", false):
+		# gelockt: weißer Rahmen mit vier Ecken, die Richtung steht fest
+		var r2 := radius + 7.0
+		for i in 4:
+			var a := PI * 0.25 + PI * 0.5 * i
+			draw_arc(p, r2, a - 0.35, a + 0.35, 8, Color.WHITE, 3.0, true)
 	if aim > 0.85 and fmod(_time, 0.16) < 0.08:
 		draw_circle(p, radius - 4.0, Color(1.0, 0.1, 0.05, 0.9))
 	var font := ThemeDB.fallback_font

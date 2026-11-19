@@ -4,6 +4,9 @@ extends Actor
 ##  GUARD  – bewacht: schwenkt den Blick oder patrouilliert langsam
 ##  ALERT  – hat etwas gehört / Ziel verloren: dreht sich zur Stelle
 ##  ENGAGE – sieht einen Officer: dreht sich hin, feuert nach Reaktionszeit
+##           Ziel-Lock: in den letzten aim_lock_time Spielsekunden vor dem Schuss hält er
+##           die gewählte Richtung fest und schießt dann genau dorthin – auch wenn der
+##           Officer inzwischen ausgewichen ist.
 ##
 ## Zusätzliche Reaktionen:
 ##  Geisel als Schild – beim ersten Alarm stellt er sich hinter eine nahe Geisel
@@ -22,6 +25,9 @@ enum Mode { NONE, GO, WAIT, RETURN }
 const FLAG_BLIND := 4
 const FLAG_ENGAGE := 8
 const FLAG_ARMED := 16
+const FLAG_LOCKED := 32
+## So genau muss er ausgerichtet sein, bevor er die Richtung lockt (bzw. schießt).
+const AIM_TOLERANCE_DEG := 2.5
 
 @export var view_range := 10.0
 @export var fov_half_deg := 50.0
@@ -40,6 +46,7 @@ const FLAG_ARMED := 16
 @export var cover_cooldown := 4.0       # frühestens dann geht er erneut in Deckung
 @export var hostage_range := 5.0        # so nah muss eine Geisel sein (mit Sichtlinie)
 @export var threat_time := 10.0         # Frist in Spielsekunden, bis er die Geisel erschießt
+@export var aim_lock_time := 1.0        # Spielsekunden vor dem Schuss: ab dann ist die Richtung fest
 
 var game                                  # GameManager (liefert Officer, Geiseln, Sichtlinien, Tick)
 var state := State.GUARD
@@ -51,6 +58,7 @@ var vis_engage := false                   # hat einen Officer gesichtet -> Laser
 var vis_blind := false
 var vis_aim := 0.0                        # 0..1, bei 1 fällt der nächste Schuss
 var vis_armed := false                    # Waffe im Anschlag (für Anzeige und Replay)
+var vis_locked := false                   # Zielrichtung ist gelockt, der Schuss kommt gleich
 
 var _scan_phase := 0.0
 var _patrol_i := 0
@@ -69,6 +77,7 @@ var _goal := Vector3.ZERO
 var _return_pos := Vector3.ZERO
 var _wait_after := 0.0
 var _cover_cd := 0.0
+var _locked := false                      # Zielrichtung gelockt: dreht nicht mehr, schießt bei 0
 var _rng := RandomNumberGenerator.new()
 
 
@@ -87,6 +96,7 @@ func apply_tweaks() -> void:
 	cover_cooldown = Tweaks.num("enemy", "cover_cooldown", 4.0)
 	threat_time = Tweaks.num("enemy", "threat_time", 10.0)
 	draw_time = Tweaks.num("enemy", "weapon_draw_time", 0.4)
+	aim_lock_time = maxf(0.0, Tweaks.num("enemy", "aim_lock_time", 1.0))
 	_draw = draw_time
 
 
@@ -102,6 +112,7 @@ func sim_tick(dt: float) -> void:
 	model.set_aiming(vis_armed)
 	vis_blind = _blind > 0.0
 	vis_engage = vis_armed and state == State.ENGAGE and _mode == Mode.NONE and not vis_blind
+	vis_locked = vis_engage and _locked
 	vis_aim = 0.0
 	if vis_engage:
 		vis_aim = 1.0 - maxf(maxf(_react / reaction_time, _cooldown / fire_cooldown), _draw / maxf(draw_time, 0.001))
@@ -111,9 +122,18 @@ func _think(dt: float) -> void:
 	if _blind > 0.0:
 		# Geblendet: sieht nichts, zielt nicht, schießt nicht; auch die Frist steht still.
 		_blind -= dt
+		_locked = false               # geblendet: der gelockte Schuss entfällt
 		if state == State.ENGAGE:
 			state = State.ALERT
 			_alert_time = 3.0
+		return
+
+	if _locked:
+		# Richtung gelockt: nicht mehr drehen, nicht mehr nachzielen – nur noch abwarten
+		# und dann in genau diese Richtung schießen, egal wo der Officer jetzt ist.
+		_react = maxf(0.0, _react - dt)
+		if _shot_left() <= 0.0:
+			_shoot()
 		return
 
 	if state != State.GUARD and not _alerted:
@@ -148,11 +168,11 @@ func _think(dt: float) -> void:
 		var want := yaw_to(target.global_position)
 		_turn(want, dt)
 		_react = maxf(0.0, _react - dt)
-		if _react <= 0.0 and _cooldown <= 0.0 and _draw <= 0.0 \
-				and absf(angle_difference(yaw, want)) < deg_to_rad(2.5):
-			_cooldown = fire_cooldown
-			game.enemy_fire(self, _spread_dir())
-			_take_cover()
+		# Ausgerichtet und der Schuss steht bevor: Richtung locken (bei 0 sofort schießen)
+		if _shot_left() <= aim_lock_time and absf(angle_difference(yaw, want)) < deg_to_rad(AIM_TOLERANCE_DEG):
+			_locked = true
+			if _shot_left() <= 0.0:
+				_shoot()
 		return
 
 	match state:
@@ -166,6 +186,19 @@ func _think(dt: float) -> void:
 				state = State.GUARD
 		State.GUARD:
 			_guard(dt)
+
+
+## Spielsekunden bis zum nächsten möglichen Schuss (Reaktion, Feuerpause, Waffe ziehen).
+func _shot_left() -> float:
+	return maxf(maxf(_react, _cooldown), _draw)
+
+
+## Schuss in die aktuelle (gelockte) Blickrichtung, danach ggf. in Deckung.
+func _shoot() -> void:
+	_locked = false
+	_cooldown = fire_cooldown
+	game.enemy_fire(self, _spread_dir())
+	_take_cover()
 
 
 ## Ein Geräusch in Hörweite (Schuss, Granate, Tür): zur Stelle drehen.
@@ -205,13 +238,14 @@ func hostage_index() -> int:
 
 func flags() -> int:
 	return (FLAG_BLIND if vis_blind else 0) | (FLAG_ENGAGE if vis_engage else 0) \
-		| (FLAG_ARMED if vis_armed else 0)
+		| (FLAG_ARMED if vis_armed else 0) | (FLAG_LOCKED if vis_locked else 0)
 
 
 func apply_flags(f: int) -> void:
 	vis_blind = f & FLAG_BLIND != 0
 	vis_armed = f & FLAG_ARMED != 0
 	vis_engage = vis_armed and f & FLAG_ENGAGE != 0
+	vis_locked = vis_engage and f & FLAG_LOCKED != 0
 	vis_aim = 0.0
 	model.set_aiming(vis_armed)
 
@@ -360,7 +394,7 @@ func get_state() -> Dictionary:
 		"cooldown": _cooldown, "alert_pos": _alert_pos, "alert_time": _alert_time, "blind": _blind,
 		"alerted": _alerted, "hostage": _hostage, "exec": _exec, "mode": _mode, "mode_t": _mode_t,
 		"goal": _goal, "return_pos": _return_pos, "wait_after": _wait_after, "cover_cd": _cover_cd,
-		"draw": _draw,
+		"draw": _draw, "locked": _locked,
 	})
 	return s
 
@@ -385,8 +419,10 @@ func set_state(s: Dictionary) -> void:
 	_wait_after = s.wait_after
 	_cover_cd = s.cover_cd
 	_draw = s.draw
+	_locked = s.locked
 	vis_blind = _blind > 0.0
 	vis_armed = state != State.GUARD and _draw <= 0.0
 	vis_engage = vis_armed and state == State.ENGAGE and _mode == Mode.NONE and not vis_blind
+	vis_locked = vis_engage and _locked
 	vis_aim = 0.0
 	model.set_aiming(vis_armed)
