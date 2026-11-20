@@ -1511,9 +1511,8 @@ func _use_pad(device: int) -> void:
 func _set_pad_kind(device: int) -> void:
 	var n := Input.get_joy_name(device).to_lower() if device >= 0 else ""
 	_pad_kind = "xbox"
-	for word: String in ["nintendo", "switch", "pro controller", "joy-con", "joycon"]:
-		if n.contains(word):
-			_pad_kind = "switch"
+	if device >= 0 and Pad.is_nintendo(device):
+		_pad_kind = "switch"
 	for word: String in ["playstation", "dualsense", "dualshock", "sony", "ps4", "ps5"]:
 		if n.contains(word):
 			_pad_kind = "ps"

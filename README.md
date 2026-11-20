@@ -32,7 +32,9 @@ weiter, Esc bzw. Start überspringt sie. Über das Pausemenü kommt man zurück 
 | Esc | Start | Pausemenü (Fortsetzen / Zug beenden / Mission neu starten / Hauptmenü / Beenden) |
 
 Die Controller-Tasten sind nach ihrer **Lage** benannt wie beim Xbox-Pad (A unten, B rechts,
-X links, Y oben). Das Spiel erkennt am Gerätenamen, ob ein Xbox-, Switch-Pro- oder
+X links, Y oben). In den **Menüs** bestätigt man mit der Taste, die auf dem Controller „A“ heißt (Switch Pro:
+rechte Taste, Xbox: untere), und geht mit „B“ zurück; Steuerkreuz oder linker Stick wechseln
+den Menüpunkt. Das Spiel erkennt am Gerätenamen, ob ein Xbox-, Switch-Pro- oder
 PlayStation-Controller benutzt wird, und zeigt im HUD die Beschriftung, die dort an dieser
 Stelle steht (Switch Pro: B / A / Y / X, ZL / L, ZR / R, +). Es schaltet automatisch auf das
 zuletzt benutzte Eingabegerät um.

@@ -19,6 +19,7 @@ var is_open := false
 
 var _dim: ColorRect       # Vollbild-Abdunklung, fängt Mausklicks ab
 var _resume: Button       # „Fortsetzen“: bekommt beim Öffnen den Fokus
+var _pad_stick := [false] # linker Stick ausgelenkt (Fokuswechsel nur einmal je Bewegung)
 
 
 func _ready() -> void:
@@ -159,12 +160,17 @@ func _input(event: InputEvent) -> void:
 		toggle()
 		get_viewport().set_input_as_handled()
 		return
-	# Controller: Start öffnet/schließt das Menü, B schließt es
+	# Controller: Start (+) öffnet/schließt das Menü, die Zurück-Taste schließt es,
+	# Bestätigen und Fokuswechsel übernimmt Pad.handle_menu (Nintendo: A rechts bestätigt)
 	if event is InputEventJoypadButton and event.pressed:
-		if event.button_index == JOY_BUTTON_START or (is_open and event.button_index == JOY_BUTTON_B):
+		if event.button_index == JOY_BUTTON_START \
+				or (is_open and event.button_index == Pad.back_button(event.device)):
 			toggle()
 			get_viewport().set_input_as_handled()
 			return
+	if is_open and Pad.handle_menu(event, get_viewport(), _resume, _pad_stick):
+		get_viewport().set_input_as_handled()
+		return
 	if not is_open:
 		return
 	# Menü offen: Tastendrücke dürfen nicht ins Spiel durchfallen – außer der

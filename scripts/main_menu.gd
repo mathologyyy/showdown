@@ -36,6 +36,7 @@ var _b_text: Label
 var _b_dots: Label
 var _diagram: Diagram
 var _page := 0
+var _pad_stick := [false]          # linker Stick ausgelenkt (Fokuswechsel nur einmal je Bewegung)
 var _brief_then_start := false     # nach der Einweisung direkt ins Spiel (sonst zurück ins Menü)
 
 
@@ -206,7 +207,7 @@ func _ready() -> void:
 	_b_text.custom_minimum_size = Vector2(PAGE_W, 96)
 	_b_dots = _label(col, 26, Color.WHITE)
 	var hint := _label(col, 15, Color(0.7, 0.7, 0.7))
-	hint.text = "Weiter: beliebige Taste oder Klick      Überspringen: Esc / Start"
+	hint.text = "Weiter: beliebige Taste oder Klick      Überspringen: Esc / Start / +"
 	_brief.visible = false
 
 	_start.grab_focus()
@@ -264,6 +265,9 @@ func _close_briefing() -> void:
 ## Esc bzw. Start überspringt den Rest. (Berührungen kommen als Mausklick an.)
 func _input(event: InputEvent) -> void:
 	if not _brief.visible:
+		# Menü: Controller selbst behandeln (Bestätigen je nach Bauart, siehe pad.gd)
+		if _menu_box.visible and Pad.handle_menu(event, get_viewport(), _start, _pad_stick):
+			get_viewport().set_input_as_handled()
 		return
 	var is_key: bool = event is InputEventKey and event.pressed and not event.echo
 	var is_pad: bool = event is InputEventJoypadButton and event.pressed
